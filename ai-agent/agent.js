@@ -256,7 +256,11 @@ function decideHeuristicEarth(gs) {
     };
   }
 
-  if (agl < 120) {
+  if (gs.flight.gearDown && agl > 35 && !onGround) {
+    return { action: "toggle_gear", params: {}, reasoning: "[earth] gear up after liftoff" };
+  }
+
+  if (agl < 180) {
     return {
       action: "set_pitch",
       params: { value: 0.14 },
@@ -264,20 +268,24 @@ function decideHeuristicEarth(gs) {
     };
   }
 
-  if (agl > 400) {
+  if (agl >= 180 && agl <= 320) {
+    return {
+      action: "set_pitch",
+      params: { value: 0.03 },
+      reasoning: "[earth] level in cruise band",
+    };
+  }
+
+  if (agl > 320) {
     return {
       action: "set_pitch",
       params: { value: 0.02 },
-      reasoning: "[earth] level cruise",
+      reasoning: "[earth] high-altitude cruise",
     };
   }
 
   if (!gs.flight.gearDown && agl < 80) {
     return { action: "toggle_gear", params: {}, reasoning: "[earth] gear down low pass" };
-  }
-
-  if (gs.flight.gearDown && agl > 150) {
-    return { action: "toggle_gear", params: {}, reasoning: "[earth] gear up cruise" };
   }
 
   return {
@@ -491,21 +499,6 @@ async function tick(page, turn, logger, session) {
     startup_active: gs.startupActive,
   });
 
-  if (EARTH && HEURISTIC && gs.afford.canControl) {
-    await page.evaluate(({ agl }) => {
-      const s = window.__earthState;
-      const f = s.flight;
-      if (agl < 100) {
-        f.throttle = Math.max(f.throttle, 0.88);
-        f.pitch = Math.max(f.pitch, 0.12);
-      } else if (agl > 350) {
-        f.throttle = Math.min(f.throttle, 0.65);
-        f.pitch = Math.min(f.pitch, 0.05);
-      }
-      if (agl > 120 && f.gearDown) f.gearDown = false;
-    }, { agl: gs.flight.agl });
-  }
-
   if (!EARTH && HEURISTIC && gs.mission.active && gs.afford.canControl) {
     await page.evaluate(({ phase }) => {
       const f = window.state.flight;
@@ -568,6 +561,23 @@ async function tick(page, turn, logger, session) {
   if (!EARTH) session._lastPhase = gs.mission.phase;
   await execute(page, action);
   session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
+
+  if (EARTH && HEURISTIC && gs.afford.canControl) {
+    await page.evaluate(({ agl }) => {
+      const s = window.__earthState;
+      const f = s.flight;
+      if (agl < 180) {
+        f.throttle = Math.max(f.throttle, 0.88);
+        f.pitch = Math.max(f.pitch, 0.12);
+      } else if (agl <= 320) {
+        f.pitch = Math.min(f.pitch, 0.04);
+        f.throttle = Math.min(Math.max(f.throttle, 0.55), 0.75);
+      } else {
+        f.throttle = Math.min(f.throttle, 0.65);
+        f.pitch = Math.min(f.pitch, 0.05);
+      }
+    }, { agl: gs.flight.agl });
+  }
 
   logger.write({
     type: "action",
