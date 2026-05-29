@@ -1,0 +1,15 @@
+{
+  "name": "jet-pilot-simulator-ai-agent",
+  "version": "1.0.0",
+  "description": "LLM-powered test agent for Jet Pilot Simulator",
+  "type": "module",
+  "scripts": {
+    "start": "node agent.js",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "openai": "^6.39.0",
+    "playwright": "^1.49.0"
+  }
+}

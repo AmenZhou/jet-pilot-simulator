@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jet Pilot — Fly Earth</title>
+  <link rel="stylesheet" href="/src/earth/earth.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel">
+      <div class="eyebrow">Fly Earth · v1</div>
+      <h1 class="title">Global Flight</h1>
+
+      <div class="status-row" id="statusText">Loading globe…</div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">AGL</div>
+          <div class="stat-value" id="telAgl">0 m</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Speed</div>
+          <div class="stat-value" id="telSpeed">0 kt</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Heading</div>
+          <div class="stat-value" id="telHdg">0°</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ground</div>
+          <div class="stat-value stat-small" id="telTerrain">—</div>
+        </div>
+      </div>
+
+      <div class="controls-group">
+        <h2>Airport</h2>
+        <select id="airportSelect" class="select"></select>
+        <div class="airport-grid">
+          <button type="button" class="secondary" data-airport="SFO">SFO</button>
+          <button type="button" class="secondary" data-airport="LAX">LAX</button>
+          <button type="button" class="secondary" data-airport="JFK">JFK</button>
+          <button type="button" class="secondary" data-airport="LHR">LHR</button>
+          <button type="button" class="secondary" data-airport="NRT">NRT</button>
+        </div>
+      </div>
+
+      <div class="controls-group">
+        <h2>Flight</h2>
+        <div class="buttons">
+          <button type="button" id="flyBtn">Fly</button>
+          <button type="button" class="secondary" id="pauseBtn">Pause</button>
+          <button type="button" class="secondary" id="chaseBtn">Camera: Cockpit</button>
+        </div>
+      </div>
+
+      <div class="hint">
+        <strong>Enter</strong> or <strong>Fly</strong> to start.<br />
+        <strong>W/S</strong> throttle · <strong>↑/↓</strong> pitch · <strong>←/→</strong> turn<br />
+        <strong>G</strong> gear · <strong>Space</strong> pause<br />
+        <span class="hint-muted">v1: free Cesium globe — no paid Ion required.</span>
+      </div>
+
+      <p class="legacy-link">
+        <a href="/jet_pilot_simulator.html">← Arcade training sortie (legacy)</a>
+      </p>
+    </aside>
+
+    <main class="viewport-wrap">
+      <div id="cesiumContainer" aria-label="Earth globe"></div>
+      <div id="cockpitOverlay" aria-hidden="true"></div>
+      <canvas id="hudCanvas"></canvas>
+    </main>
+  </div>
+
+  <script type="module" src="/src/earth/main.js"></script>
+</body>
+</html>
