@@ -156,9 +156,11 @@ const EARTH_SYSTEM_PROMPT = `You are an expert Fly Earth autopilot on airport-to
 Primary goal: take off from origin, cruise, land at destination (gear down, slow, within ~4 km).
 
 Mission phases: preflight → takeoff → cruise → approach → landed (or failed).
-- preflight: use start_flight to begin takeoff roll.
-- takeoff: throttle 0.9+, pitch 0.12–0.14, gear up after AGL > 35m.
-- cruise: 250–450m AGL; turn toward destination when |navigation.hdgErrorDeg| > 20.
+- Assisted mode: takeoff roll → rotate at VR → liftoff → V2 climb is automatic. Use **wait** during takeoff (do NOT set_throttle/set_pitch).
+- Speed is capped ~190 kt on takeoff; hyper (Mach 100) only after cruise climb (>120 m AGL) via toggle_hyper.
+- Manual takeoff: start_flight, then throttle 0.9+, pitch up at VR (~146 kt).
+- cruise: 250–450m AGL; use set_heading with navigation.bearingRad (radians, ~0–6.28), NOT degrees.
+- set_heading params.value must be radians. Do not pass 138 for a degree bearing.
 - approach (within ~45 km): gear down, reduce throttle, descend; align with destination.
 - landed: wait. If failed/crashed: start_mission to retry from origin.
 
@@ -168,7 +170,7 @@ Do NOT spam set_throttle if within 0.05 of target.
 
 Output JSON:
 {
-  "action": "start_mission" | "start_flight" | "respawn" | "set_throttle" | "set_pitch" | "set_heading" | "set_gear" | "toggle_gear" | "toggle_pause" | "set_game_speed" | "set_control_mode" | "wait",
+  "action": "start_mission" | "start_flight" | "respawn" | "set_throttle" | "set_pitch" | "set_heading" | "set_gear" | "toggle_gear" | "toggle_hyper" | "toggle_pause" | "set_game_speed" | "set_control_mode" | "wait",
   "params": {
     "value": number,
     "speed": 1 | 2 | 4,
@@ -229,6 +231,11 @@ async function readState(page) {
         },
         terrain: t.terrain,
         navigation: t.navigation,
+        takeoffPhase: s.takeoff?.phase || "idle",
+        takeoffVRKt: s.takeoff?.speeds?.VR_KT ?? null,
+        hyperSpeed: Boolean(s.hyperSpeed),
+        speedMode: window.__earthAgent?.speedModeLabel?.() || null,
+        groundspeedKt: Math.round(f.speed * 1.94384),
         mission: s.mission
           ? {
               active: s.mission.active,
@@ -239,13 +246,14 @@ async function readState(page) {
             }
           : null,
         afford: {
-          canStartMission:
+          canBeginTakeoffRoll:
             s.mission?.active &&
             s.mission.phase === "preflight" &&
             !s.flying &&
             !f.crashed,
           canStartFlight: !s.flying && !f.crashed,
           canControl: s.flying && !s.paused && !f.crashed,
+          canToggleHyper: Boolean(window.__earthAgent?.canEnableHyperSpeed?.()),
           canRespawn: f.crashed,
         },
       };
@@ -292,13 +300,36 @@ async function readState(page) {
   });
 }
 
+function isAssistedTakeoffActive(gs) {
+  if (!EARTH || gs.mission?.controlMode !== "assisted") return false;
+  if (gs.mission?.phase !== "takeoff") return false;
+  const tp = gs.takeoffPhase;
+  return Boolean(tp && tp !== "idle" && tp !== "complete");
+}
+
+function guardAssistedTakeoffAction(action, gs) {
+  if (!isAssistedTakeoffActive(gs)) return action;
+  if (
+    action.action === "set_throttle" ||
+    action.action === "set_pitch" ||
+    action.action === "set_heading"
+  ) {
+    return {
+      action: "wait",
+      params: {},
+      reasoning: `[assisted] ${action.action} skipped — autopilot handles takeoff (${gs.takeoffPhase})`,
+    };
+  }
+  return action;
+}
+
 function validActionsThisTurn(gs) {
   if (EARTH) {
     const out = ["wait"];
-    if (gs.afford.canStartMission) out.push("start_flight");
+    if (gs.afford.canBeginTakeoffRoll || gs.afford.canStartFlight) out.push("start_flight");
     if (!gs.mission?.active && gs.navTarget) out.push("start_mission");
-    if (gs.afford.canStartFlight && !gs.afford.canStartMission) out.push("start_flight");
     if (gs.afford.canRespawn) out.push("respawn");
+    if (gs.afford.canToggleHyper) out.push("toggle_hyper");
     if (gs.afford.canControl) {
       out.push(
         "set_throttle",
@@ -351,11 +382,11 @@ function decideHeuristicEarth(gs) {
     return { action: "wait", params: {}, reasoning: "[earth] mission complete" };
   }
 
-  if (gs.afford.canStartMission || (gs.afford.canStartFlight && !gs.flying)) {
+  if (gs.afford.canBeginTakeoffRoll || (gs.afford.canStartFlight && !gs.flying)) {
     return { action: "start_flight", params: {}, reasoning: "[earth] begin takeoff" };
   }
 
-  if (gs.gameSpeed < 4) {
+  if (gs.gameSpeed < 4 && !isAssistedTakeoffActive(gs) && gs.mission?.phase === "cruise") {
     return { action: "set_game_speed", params: { speed: 4 }, reasoning: "[earth] sim speed 4x" };
   }
 
@@ -365,6 +396,14 @@ function decideHeuristicEarth(gs) {
   }
 
   const phase = mission?.active ? mission.phase : "cruise";
+
+  if (isAssistedTakeoffActive(gs)) {
+    return {
+      action: "wait",
+      params: {},
+      reasoning: `[earth] assisted takeoff (${gs.takeoffPhase}) — ${gs.groundspeedKt} kt`,
+    };
+  }
 
   if (phase === "preflight" || phase === "takeoff" || (onGround && agl < 5)) {
     if (onGround && agl < 5) {
@@ -523,8 +562,14 @@ function clampAction(action, gs) {
     return { action: a, params: { speed }, reasoning: action.reasoning || "" };
   }
   if (a === "set_heading") {
-    const v = Number(p.value);
+    let v = Number(p.value);
     if (!Number.isFinite(v)) return { action: "wait", params: {}, reasoning: "[clamped] heading missing" };
+    if (EARTH && Math.abs(v) > Math.PI * 2) {
+      v = (v * Math.PI) / 180;
+    }
+    if (EARTH && gs.navigation?.bearingRad != null && Math.abs(Number(p.value)) > 6) {
+      v = gs.navigation.bearingRad;
+    }
     return { action: a, params: { value: v }, reasoning: action.reasoning || "" };
   }
   if (a === "set_gear") {
@@ -620,6 +665,9 @@ async function execute(page, action) {
         break;
       case "toggle_pause":
         await page.evaluate(() => window.__earthAgent.togglePause());
+        break;
+      case "toggle_hyper":
+        await page.evaluate(() => window.__earthAgent.toggleHyperSpeed());
         break;
       case "set_game_speed":
         await page.evaluate(({ speed }) => window.__earthAgent.setGameSpeed(speed), params);
@@ -860,8 +908,41 @@ async function checkPageFaults(page, turn, logger, session) {
   }
 }
 
+async function beginEarthTakeoffIfNeeded(page, route = null) {
+  await page.evaluate(
+    ({ from, to, mode }) => {
+      const s = window.__earthState;
+      if (!s.mission?.active && from && to) {
+        window.__earthAgent.setControlMode(mode);
+        window.__earthAgent.startMission(from, to);
+      }
+      if (s.mission?.active && s.mission.phase === "preflight" && !s.flying) {
+        window.__earthAgent.beginFlight();
+      } else if (!s.flying && s.mission?.active) {
+        window.__earthAgent.beginFlight();
+      }
+      s.paused = false;
+      if (s.takeoff?.phase && s.takeoff.phase !== "complete") {
+        window.__earthAgent.setGameSpeed(1);
+      }
+    },
+    {
+      from: route?.from || null,
+      to: route?.to || null,
+      mode: route?.mode || "assisted",
+    }
+  );
+}
+
 async function tick(page, turn, logger, session) {
   await checkPageFaults(page, turn, logger, session);
+  if (EARTH && turn <= 3) {
+    await beginEarthTakeoffIfNeeded(page, {
+      from: FROM_AIRPORT,
+      to: TO_AIRPORT,
+      mode: CONTROL_MODE === "manual" ? "manual" : "assisted",
+    });
+  }
   const gs = await readState(page);
   if (!gs) return;
 
@@ -882,6 +963,10 @@ async function tick(page, turn, logger, session) {
     cash: gs.cash,
     cash_delta: cashDelta,
     mission: gs.mission,
+    takeoff_phase: gs.takeoffPhase,
+    hyper_speed: gs.hyperSpeed,
+    groundspeed_kt: gs.groundspeedKt,
+    speed_mode: gs.speedMode,
     flight: gs.flight,
     terrain: gs.terrain,
     flying: gs.flying,
@@ -912,7 +997,14 @@ async function tick(page, turn, logger, session) {
     }, { phase: gs.mission.phase });
   }
 
-  if (EARTH && gs.afford.canControl && gs.flight.gearDown && gs.flight.agl > 80 && !gs.flight.onGround) {
+  if (
+    EARTH &&
+    gs.afford.canControl &&
+    !isAssistedTakeoffActive(gs) &&
+    gs.flight.gearDown &&
+    gs.flight.agl > 80 &&
+    !gs.flight.onGround
+  ) {
     const auto = { action: "set_gear", params: { down: false }, reasoning: "[auto] gear up after liftoff" };
     await execute(page, auto);
     logger.write({ type: "override", turn, ...auto });
@@ -920,9 +1012,18 @@ async function tick(page, turn, logger, session) {
 
   let action;
   if (HEURISTIC) {
-    action = skipDuplicateAction(clampAction(normalizeAction(decideHeuristic(gs)), gs, session), gs, session);
+    action = guardAssistedTakeoffAction(
+      skipDuplicateAction(clampAction(normalizeAction(decideHeuristic(gs)), gs, session), gs, session),
+      gs
+    );
   } else {
-    if (EARTH && gs.flying && gs.gameSpeed < 4 && gs.afford.canControl) {
+    if (
+      EARTH &&
+      gs.flying &&
+      gs.gameSpeed < 4 &&
+      gs.afford.canControl &&
+      !isAssistedTakeoffActive(gs)
+    ) {
       const auto = { action: "set_game_speed", params: { speed: 4 }, reasoning: "[auto] 4x sim speed" };
       await execute(page, auto);
       logger.write({ type: "override", turn, ...auto });
@@ -948,7 +1049,10 @@ async function tick(page, turn, logger, session) {
       logger.write({ type: "error", turn, error: "bad_json", raw: clean });
       return;
     }
-    action = skipDuplicateAction(clampAction(normalizeAction(action), gs), gs, session);
+    action = guardAssistedTakeoffAction(
+      skipDuplicateAction(clampAction(normalizeAction(action), gs), gs, session),
+      gs
+    );
   }
 
   if (EARTH && gs.flight.crashed && !session._wasCrashed) {
@@ -967,7 +1071,7 @@ async function tick(page, turn, logger, session) {
   session._lastApplied = { action: action.action, params: { ...(action.params || {}) } };
   session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
 
-  if (EARTH && HEURISTIC && gs.afford.canControl) {
+  if (EARTH && HEURISTIC && gs.afford.canControl && !isAssistedTakeoffActive(gs)) {
     await page.evaluate(({ agl }) => {
       const s = window.__earthState;
       const f = s.flight;
@@ -995,8 +1099,10 @@ async function tick(page, turn, logger, session) {
   });
 
   if (EARTH) {
+    const tk = gs.takeoffPhase && gs.takeoffPhase !== "idle" ? ` tk:${gs.takeoffPhase}` : "";
+    const hyper = gs.hyperSpeed ? " HYPER" : "";
     console.log(
-      `[T${String(turn).padStart(3)}] ${gs.airportId}${gs.navigation ? `→${gs.navigation.destId}` : ""} | agl ${String(gs.flight.agl).padStart(4)} | alt ${String(gs.flight.alt).padStart(5)} | spd ${String(gs.flight.speed).padStart(3)} | ${action.action}`
+      `[T${String(turn).padStart(3)}] ${gs.airportId}${gs.navigation ? `→${gs.navigation.destId}` : ""} | ${gs.mission?.phase || "?"}${tk}${hyper} | ${gs.groundspeedKt}kt agl ${String(gs.flight.agl).padStart(4)} | ${action.action}`
     );
   } else {
     console.log(
@@ -1055,6 +1161,7 @@ async function main() {
   });
   if (EARTH) {
     await page.waitForFunction(() => window.__earthState && window.__earthAgent, { timeout: 45000 });
+    await page.evaluate(() => window.__earthAgent.setAgentDrive(true));
   } else {
     await page.waitForFunction(() => window.state && window.startMission, { timeout: 30000 });
   }
@@ -1082,6 +1189,10 @@ async function main() {
         { from: origin, to: TO_AIRPORT, mode: CONTROL_MODE === "manual" ? "manual" : "assisted" }
       );
       console.log(`Mission: ${origin} → ${TO_AIRPORT} (${dest.name}) · ${CONTROL_MODE}`);
+      await page.evaluate(() => {
+        window.__earthAgent.setGameSpeed(1);
+      });
+      console.log("Mission armed — agentDrive @ 1×; turn 1 begins takeoff roll");
     } else {
       await page.evaluate(() => {
         const s = window.__earthState;
@@ -1098,8 +1209,8 @@ async function main() {
     await page.bringToFront();
     await page.evaluate(() => {
       window.__earthAgent.setChaseView(true);
-      if (!window.__earthState.mission?.active) window.__earthAgent.beginFlight();
-      window.__earthAgent.setGameSpeed(4);
+      const s = window.__earthState;
+      if (!s.mission?.active && !s.flying) window.__earthAgent.beginFlight();
     });
   }
 
@@ -1125,6 +1236,10 @@ async function main() {
     }
 
     turn += 1;
+  }
+
+  if (EARTH) {
+    await page.evaluate(() => window.__earthAgent.setAgentDrive(false)).catch(() => {});
   }
 
   const finalGs = await readState(page).catch(() => null);

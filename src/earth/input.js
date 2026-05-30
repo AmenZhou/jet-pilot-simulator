@@ -2,6 +2,7 @@ import { beginFlight, spawnAtAirport, AIRPORTS } from "./state.js";
 import { cancelMission, setControlMode } from "./mission.js";
 import { adjustCameraZoom } from "./cesium-view.js";
 import { toggleAltitudeHold } from "./cruise-hold.js";
+import { toggleHyperSpeed } from "./speed-mode.js";
 
 export function bindInput(state, onChange) {
   function down(event) {
@@ -51,6 +52,10 @@ export function bindInput(state, onChange) {
         break;
       case "KeyL":
         toggleAltitudeHold(state);
+        onChange();
+        break;
+      case "KeyM":
+        toggleHyperSpeed(state);
         onChange();
         break;
       default:
@@ -156,6 +161,14 @@ export function bindPanel(state, elements, { flyToAirport, onChange, startMissio
     elements.holdBtn.addEventListener("click", () => {
       if (!state.flying) return;
       toggleAltitudeHold(state);
+      onChange();
+    });
+  }
+
+  if (elements.hyperBtn) {
+    elements.hyperBtn.addEventListener("click", () => {
+      if (!state.flying) return;
+      toggleHyperSpeed(state);
       onChange();
     });
   }

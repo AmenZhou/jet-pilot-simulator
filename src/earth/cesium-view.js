@@ -1,5 +1,10 @@
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import {
+  createTrafficAircraftGroup,
+  updateTrafficAircraftGroup,
+  removeTrafficAircraftGroup,
+} from "./traffic-aircraft.js";
 
 let viewer = null;
 let aircraftEntity = null;
@@ -84,19 +89,27 @@ export async function initGlobe(container) {
     ? Cesium.Cartesian3.fromDegrees(spawn.lon, spawn.lat, spawn.alt)
     : Cesium.Cartesian3.fromDegrees(-122.375, 37.6189, 8);
 
+  const playerHpr = new Cesium.HeadingPitchRoll(
+    spawn?.heading ?? 0,
+    spawn?.pitch ?? 0,
+    spawn?.roll ?? 0
+  );
   aircraftEntity = viewer.entities.add({
     name: "Jet",
     show: false,
     position: spawnPos.clone(),
-    orientation: Cesium.Transforms.headingPitchRollQuaternion(
-      spawnPos,
-      new Cesium.HeadingPitchRoll(spawn?.heading ?? 0, spawn?.pitch ?? 0, spawn?.roll ?? 0)
-    ),
-    box: {
-      dimensions: new Cesium.Cartesian3(14, 5, 5),
-      material: Cesium.Color.fromCssColorString("#48b8ff").withAlpha(0.75),
-      outline: true,
-      outlineColor: Cesium.Color.CYAN,
+    orientation: Cesium.Transforms.headingPitchRollQuaternion(spawnPos, playerHpr),
+    model: {
+      uri: "/models/cesium-air.glb",
+      scale: 5.2,
+      minimumPixelSize: 72,
+      maximumScale: 50000,
+      runAnimations: false,
+      color: Cesium.Color.fromCssColorString("#48b8ff"),
+      colorBlendMode: Cesium.ColorBlendMode.MIX,
+      colorBlendAmount: 0.2,
+      silhouetteColor: Cesium.Color.CYAN,
+      silhouetteSize: 2,
     },
   });
 
@@ -113,79 +126,43 @@ export function sampleTerrainHeight(lon, lat) {
 
 export function syncTrafficEntities(trafficList) {
   if (!viewer) return;
+  try {
+    syncTrafficEntitiesInner(trafficList);
+  } catch (err) {
+    console.warn("[traffic] sync failed:", err?.message || err);
+  }
+}
+
+function syncTrafficEntitiesInner(trafficList) {
   const active = new Set((trafficList || []).map((t) => t.id));
 
-  for (const [id, entity] of trafficEntities) {
+  for (const [id, group] of trafficEntities) {
     if (!active.has(id)) {
-      viewer.entities.remove(entity);
+      removeTrafficAircraftGroup(viewer, group);
       trafficEntities.delete(id);
     }
   }
 
   for (const t of trafficList || []) {
-    let entity = trafficEntities.get(t.id);
-    const pos = Cesium.Cartesian3.fromDegrees(t.lon, t.lat, t.alt);
-    const orientation = Cesium.Transforms.headingPitchRollQuaternion(
-      pos,
-      new Cesium.HeadingPitchRoll(t.heading, t.pitch, t.roll)
-    );
-
-    const sepLabel =
-      t.verticalSep === "above" ? "↑" : t.verticalSep === "below" ? "↓" : "=";
-    const altFt = Math.round((t.altOffsetM ?? 0) / 0.3048);
-    const labelText = `${t.label} ${sepLabel}${altFt >= 0 ? "+" : ""}${altFt}ft`;
-
-    if (!entity) {
-      const scale = 2.8;
-      entity = viewer.entities.add({
-        name: t.label,
-        show: true,
-        position: pos,
-        orientation,
-        point: {
-          pixelSize: 10,
-          color: Cesium.Color.fromCssColorString(t.color || "#71b0ff"),
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 1,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        box: {
-          dimensions: new Cesium.Cartesian3(
-            t.length * scale,
-            t.width * scale,
-            t.height * scale
-          ),
-          material: Cesium.Color.fromCssColorString(t.color || "#71b0ff").withAlpha(0.88),
-          outline: true,
-          outlineColor: Cesium.Color.WHITE,
-        },
-        label: {
-          text: labelText,
-          font: "10px Inter, Segoe UI, sans-serif",
-          fillColor: Cesium.Color.fromCssColorString(t.color || "#71b0ff"),
-          outlineColor: Cesium.Color.fromCssColorString("#06121e"),
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -22),
-          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 120000),
-        },
-      });
-      trafficEntities.set(t.id, entity);
-    } else {
-      entity.position = pos;
-      entity.orientation = orientation;
-      entity.label.text = labelText;
-      entity.point.color = Cesium.Color.fromCssColorString(t.color || "#71b0ff");
-      entity.show = true;
+    let group = trafficEntities.get(t.id);
+    if (!group) {
+      group = createTrafficAircraftGroup(viewer, t, Cesium);
+      trafficEntities.set(t.id, group);
+    }
+    updateTrafficAircraftGroup(group, t, Cesium);
+    if (group.entity) group.entity.show = true;
+    if (group.parts) {
+      for (const entity of Object.values(group.parts)) {
+        if (entity) entity.show = true;
+      }
     }
   }
 }
 
 export function clearTrafficEntities() {
   if (!viewer) return;
-  for (const entity of trafficEntities.values()) {
-    viewer.entities.remove(entity);
+  for (const group of trafficEntities.values()) {
+    removeTrafficAircraftGroup(viewer, group);
   }
   trafficEntities.clear();
 }

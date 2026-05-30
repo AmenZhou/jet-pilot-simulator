@@ -118,10 +118,17 @@ function advanceTakeoffPhase(state, agl, climbing) {
     state.status = `Initial climb — maintain ≥ ${tk.speeds.V2_KT} kt to 400 ft AGL.`;
   }
 
+  if (tk.phase === TAKEOFF_PHASES.INITIAL_CLIMB && agl > 35 && f.speed >= V2_MPS * 0.85) {
+    if (f.gearDown && !tk.gearUpDone) {
+      f.gearDown = false;
+      tk.gearUpDone = true;
+    }
+  }
+
   if (
     tk.phase === TAKEOFF_PHASES.INITIAL_CLIMB &&
-    agl > 120 &&
-    f.speed >= V2_MPS * 0.92 &&
+    agl > 150 &&
+    f.speed >= V2_MPS * 0.88 &&
     !f.gearDown
   ) {
     tk.phase = TAKEOFF_PHASES.COMPLETE;

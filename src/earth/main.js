@@ -29,6 +29,7 @@ import { updateFlightPhysics, moveAlongHeading } from "./physics.js";
 import { maintainTraffic, updateTraffic, clearTraffic } from "./traffic.js";
 import { applyAltitudeHold, toggleAltitudeHold } from "./cruise-hold.js";
 import { updateTakeoff, isTakeoffActive } from "./takeoff.js";
+import { toggleHyperSpeed, speedModeLabel, canEnableHyperSpeed } from "./speed-mode.js";
 import { drawHud } from "./hud.js";
 import { drawGlobePanel } from "./nav-map.js";
 import { drawRadarPanel } from "./radar-map.js";
@@ -103,6 +104,12 @@ window.__earthAgent = {
   cancelMission: () => cancelMission(state),
   setControlMode: (mode) => setControlMode(state, mode),
   toggleAltitudeHold: () => toggleAltitudeHold(state),
+  toggleHyperSpeed: () => toggleHyperSpeed(state),
+  canEnableHyperSpeed: () => canEnableHyperSpeed(state),
+  speedModeLabel: () => speedModeLabel(state),
+  setAgentDrive: (on) => {
+    state.agentDrive = Boolean(on);
+  },
 };
 
 const els = {
@@ -127,6 +134,7 @@ const els = {
   pauseBtn: document.getElementById("pauseBtn"),
   chaseBtn: document.getElementById("chaseBtn"),
   holdBtn: document.getElementById("holdBtn"),
+  hyperBtn: document.getElementById("hyperBtn"),
   telTrafficList: document.getElementById("telTrafficList"),
 };
 
@@ -188,6 +196,19 @@ function syncPanel() {
       ? `HOLD ${Math.round(state.altitudeHold.targetAlt)} m`
       : "Cruise hold";
     els.holdBtn.classList.toggle("active-hold", Boolean(on));
+  }
+  if (els.hyperBtn) {
+    els.hyperBtn.textContent = state.hyperSpeed ? "Hyper: ON" : "Hyper: OFF";
+    els.hyperBtn.classList.toggle("active-hold", Boolean(state.hyperSpeed));
+    els.hyperBtn.disabled = state.flying && !canEnableHyperSpeed(state) && !state.hyperSpeed;
+    els.hyperBtn.title = state.hyperSpeed
+      ? "Mach 100 cap"
+      : "Enable above ~120 m AGL after takeoff";
+  }
+  if (els.telMission && state.flying) {
+    const m = state.mission;
+    const mode = speedModeLabel(state);
+    els.telMission.textContent = m?.active ? `${m.phase} · ${mode}` : mode;
   }
   if (els.navSelect) {
     const destId = state.navTarget?.id || "";
@@ -329,10 +350,41 @@ function populateAirports() {
   els.airportSelect.value = DEFAULT_AIRPORT;
 }
 
-function stepFrame(dt) {
-  window.__earthDiagnostics.renderFrames += 1;
-  window.__earthDiagnostics.lastStepTs = performance.now();
+function renderPresentation() {
+  syncAircraftEntity(state.flight);
+  syncTrafficEntities(state.traffic);
+  syncNavDestination(state.navTarget);
+  const cockpitVisible = state.flying && !state.showChase;
+  updateCockpitOverlay(state.flight, cockpitVisible);
+  if (state.flying) {
+    if (state.showChase) {
+      syncChaseCamera(state.flight, state.cameraZoom ?? 1);
+    } else {
+      syncCameraFromFlight(state.flight);
+    }
+  }
+  const viewer = getViewer();
+  if (viewer && !viewer.isDestroyed()) {
+    viewer.scene.requestRender();
+  }
+  renderCockpitOverlay();
+  const w = els.hud.clientWidth;
+  const h = els.hud.clientHeight;
+  if (hudCtx) drawHud(hudCtx, w, h, state);
+  if (els.radar && radarCtx) {
+    const rw = Math.max(els.radar.clientWidth, 1);
+    const rh = Math.max(els.radar.clientHeight, 1);
+    drawRadarPanel(radarCtx, rw, rh, state);
+  }
+  if (els.navMap && navMapCtx) {
+    const nw = Math.max(els.navMap.clientWidth, 1);
+    const nh = Math.max(els.navMap.clientHeight, 1);
+    drawGlobePanel(navMapCtx, nw, nh, state);
+  }
+  syncPanel();
+}
 
+function stepSimulation(dt) {
   const Cesium = getCesium();
   const useGlobeSample = Boolean(import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN?.trim());
   const globeSample = (lon, lat) => sampleTerrainHeight(lon, lat);
@@ -365,50 +417,24 @@ function stepFrame(dt) {
   maintainTraffic(state);
   updateTraffic(state, dt * state.gameSpeed, Cesium);
 
-  const cockpitVisible = state.flying && !state.showChase;
-  updateCockpitOverlay(state.flight, cockpitVisible);
+  renderPresentation();
+}
 
-  syncAircraftEntity(state.flight);
-  syncTrafficEntities(state.traffic);
-  syncNavDestination(state.navTarget);
-
-  if (state.flying) {
-    if (state.showChase) {
-      syncChaseCamera(state.flight, state.cameraZoom ?? 1);
-    } else {
-      syncCameraFromFlight(state.flight);
-    }
+function stepFrame(dt) {
+  window.__earthDiagnostics.renderFrames += 1;
+  window.__earthDiagnostics.lastStepTs = performance.now();
+  if (state.agentDrive) {
+    renderPresentation();
+    return;
   }
-
-  const viewer = getViewer();
-  if (viewer && !viewer.isDestroyed()) {
-    viewer.scene.requestRender();
-  }
-
-  renderCockpitOverlay();
-
-  const w = els.hud.clientWidth;
-  const h = els.hud.clientHeight;
-  if (hudCtx) drawHud(hudCtx, w, h, state);
-
-  if (els.radar && radarCtx) {
-    const rw = Math.max(els.radar.clientWidth, 1);
-    const rh = Math.max(els.radar.clientHeight, 1);
-    drawRadarPanel(radarCtx, rw, rh, state);
-  }
-
-  if (els.navMap && navMapCtx) {
-    const w = Math.max(els.navMap.clientWidth, 1);
-    const h = Math.max(els.navMap.clientHeight, 1);
-    drawGlobePanel(navMapCtx, w, h, state);
-  }
-
-  syncPanel();
+  stepSimulation(dt);
 }
 
 window.__earthStep = (dt) => {
   const seconds = Math.min(0.12, Math.max(0.001, Number(dt) || 0.016));
-  stepFrame(seconds * state.gameSpeed);
+  window.__earthDiagnostics.renderFrames += 1;
+  window.__earthDiagnostics.lastStepTs = performance.now();
+  stepSimulation(seconds * state.gameSpeed);
 };
 
 function loop(ts) {

@@ -1,4 +1,5 @@
-import { SPEED_OF_SOUND_MS, MAX_MACH } from "./constants.js";
+import { SPEED_OF_SOUND_MS } from "./constants.js";
+import { getSpeedCapMps } from "./speed-mode.js";
 import { MISSION_PHASES } from "./mission.js";
 import { isTakeoffActive, mpsToKt } from "./takeoff.js";
 
@@ -33,9 +34,11 @@ export function drawHud(ctx, width, height, state) {
   drawBox(ctx, 16, 16, "GS KT", String(Math.round(t.groundspeedKt)));
   drawBox(ctx, 16, 78, "GS MPH", String(Math.round(t.groundspeedKt * 1.15078)));
   const horizontalMps = t.groundspeedKt / 1.94384;
+  const maxMach = getSpeedCapMps(state) / SPEED_OF_SOUND_MS;
   const mach = horizontalMps / SPEED_OF_SOUND_MS;
-  const machLabel = mach >= MAX_MACH - 0.05 ? String(MAX_MACH) : mach.toFixed(2);
-  drawBox(ctx, 16, 140, "MACH", machLabel, mach >= MAX_MACH - 0.05);
+  const atCap = mach >= maxMach - 0.04;
+  const machLabel = state.hyperSpeed && atCap ? "100" : mach.toFixed(2);
+  drawBox(ctx, 16, 140, state.hyperSpeed ? "MACH" : "MACH*", machLabel, atCap);
   const rightInset = 176;
   drawBox(ctx, width - rightInset - 150, 16, "ALT M", String(Math.round(f.alt)));
   drawBox(ctx, 16, height - 72, "AGL M", String(Math.round(t.agl)), t.agl < 30);

@@ -4,6 +4,12 @@ export const SPEED_OF_SOUND_MS = 340.29;
 /** Hard cap: 100× Mach (~34,029 m/s horizontal-equivalent in the flight model) */
 export const MAX_MACH = 100;
 
+/** Assisted / normal cruise band (AGL above terrain, meters) */
+export const CRUISE_AGL_M = 320;
+export const CRUISE_AGL_MIN_M = 250;
+/** ~Mach 0.6 — ~430 mph / ~375 kt */
+export const CRUISE_TARGET_MPS = SPEED_OF_SOUND_MS * 0.6;
+
 export const PHYSICS = {
   MIN_SPEED: 0,
   get MAX_SPEED() {

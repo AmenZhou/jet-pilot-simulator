@@ -72,6 +72,10 @@ export function createState() {
     cameraZoom: 1,
     /** Cruise altitude hold (L to toggle) */
     altitudeHold: { active: false, targetAlt: null },
+    /** Hyper Mach 100 — off during takeoff; toggle with M in cruise */
+    hyperSpeed: false,
+    /** When true, rAF only renders — Playwright agent steps via __earthStep */
+    agentDrive: false,
   };
 }
 
@@ -102,6 +106,7 @@ export function beginFlight(state) {
   if (state.mission?.active && state.mission.phase === MISSION_PHASES.PREFLIGHT) {
     state.mission.phase = MISSION_PHASES.TAKEOFF;
   }
+  state.hyperSpeed = false;
   initTakeoff(state);
 }
 

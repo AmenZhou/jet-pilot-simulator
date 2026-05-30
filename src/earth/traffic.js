@@ -159,7 +159,10 @@ function spawnTrafficPlane(player) {
     heading,
     pitch: 0,
     roll: 0,
-    speed: Math.max(spec.speed, playerSpeed * (0.82 + Math.random() * 0.14)),
+    speed: Math.max(
+      spec.speed,
+      Math.min(playerSpeed, 290) * (0.82 + Math.random() * 0.14)
+    ),
     color: verticalSepColor(verticalSep),
     baseColor: spec.color,
     length: spec.length,
@@ -204,6 +207,9 @@ export function updateTraffic(state, dt, Cesium) {
     t.verticalSep = classifyVerticalSep(t.altOffsetM);
     t.color = verticalSepColor(t.verticalSep);
     t.heading += (Math.random() - 0.5) * 0.012 * dt;
+    const bank = Math.sin((t.id.length + performance.now() * 0.0008) % 100) * 0.06;
+    t.roll = bank;
+    t.pitch = Math.sin(performance.now() * 0.0005 + t.lat) * 0.015;
     moveAlongHeading(t, t.speed, dt, Cesium);
   }
 

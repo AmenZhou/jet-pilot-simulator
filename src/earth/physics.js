@@ -1,7 +1,6 @@
-import { PHYSICS, SPEED_OF_SOUND_MS, MAX_MACH } from "./constants.js";
+import { PHYSICS } from "./constants.js";
 import { applyGroundTakeoffPhysics, isTakeoffActive } from "./takeoff.js";
-
-const MAX_SPEED_MPS = SPEED_OF_SOUND_MS * MAX_MACH;
+import { getPhysicsCoeffs } from "./speed-mode.js";
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -36,13 +35,18 @@ export function updateFlightPhysics(state, dt, terrainAlt) {
   }
   f._prevHeading = f.heading;
 
-  const thrust = PHYSICS.THRUST * f.throttle;
-  const groundExtra = f.onGround ? PHYSICS.GROUND_FRICTION * f.speed : 0;
+  const coeffs = getPhysicsCoeffs(state);
+  const thrust = coeffs.thrust * f.throttle;
+  const groundExtra = f.onGround ? coeffs.groundFriction * f.speed : 0;
   const drag =
-    PHYSICS.DRAG * f.speed * f.speed +
-    (f.gearDown ? PHYSICS.GEAR_DRAG * f.speed : 0) +
+    coeffs.drag * f.speed * f.speed +
+    (f.gearDown ? coeffs.gearDrag * f.speed : 0) +
     groundExtra;
-  f.speed = clamp(f.speed + (thrust - drag) * dt, PHYSICS.MIN_SPEED, MAX_SPEED_MPS);
+  f.speed = clamp(
+    f.speed + (thrust - drag) * dt,
+    PHYSICS.MIN_SPEED,
+    coeffs.maxSpeed
+  );
 
   const climb = f.speed * Math.sin(f.pitch);
   const horizontal = f.speed * Math.cos(f.pitch);
@@ -75,6 +79,8 @@ export function updateFlightPhysics(state, dt, terrainAlt) {
     }
     f.onGround = true;
     if (f.pitch < 0) f.pitch = 0;
+  } else if (agl < 8 && f.speed < 40 && isTakeoffActive(state)) {
+    f.onGround = true;
   } else {
     f.onGround = false;
   }
@@ -95,5 +101,5 @@ export function moveAlongHeading(f, horizontal, dt, Cesium) {
 
   f.lon = Cesium.Math.toDegrees(carto.longitude);
   f.lat = Cesium.Math.toDegrees(carto.latitude);
-  f.alt = carto.height;
+  // Keep pilot altitude — carto.height is ellipsoid/geoid and jumps on horizontal moves.
 }

@@ -53,6 +53,12 @@ export function getGroundHeight(lon, lat, globeSampleFn, { useGlobeSample = fals
   if (airport && distM <= AIRPORT_GROUND_RADIUS_M) {
     const t = 1 - distM / AIRPORT_GROUND_RADIUS_M;
     const pad = airport.alt * Math.max(0, t * t);
+    // Ion globe.getHeight often spikes on runways (logs: groundAlt 186m at KSFO pad).
+    if (distM < 2500) return Math.max(pad, airport.alt);
+    if (useGlobeSample && Number.isFinite(globeH)) {
+      const cap = airport.alt + 40;
+      return Math.max(pad, Math.min(globeH, cap));
+    }
     return Math.max(globeH, pad);
   }
 

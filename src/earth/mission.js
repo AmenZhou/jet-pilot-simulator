@@ -1,4 +1,10 @@
-import { AIRPORTS } from "./constants.js";
+import {
+  AIRPORTS,
+  CRUISE_AGL_M,
+  CRUISE_AGL_MIN_M,
+  CRUISE_TARGET_MPS,
+  SPEED_OF_SOUND_MS,
+} from "./constants.js";
 import { computeNavTo } from "./nav.js";
 import {
   applyAssistedTakeoff,
@@ -59,6 +65,7 @@ export function startMission(state, originId, destId) {
 
   state.navTarget = { id: dest.id, name: dest.name, lat: dest.lat, lon: dest.lon };
   state.navOrigin = { id: origin.id, lat: origin.lat, lon: origin.lon };
+  state.hyperSpeed = false;
   state._lastMissionHint = null;
   state.status = `Mission ${origin.id} → ${dest.id} — parked on runway (throttle 0). Fly/Enter to roll. Mode: ${state.mission.controlMode}.`;
   return true;
@@ -158,16 +165,39 @@ export function updateMission(state) {
     state._lastMissionHint = null;
   }
 
-  if (
-    m.phase === MISSION_PHASES.TAKEOFF &&
-    (state.takeoff?.phase === TAKEOFF_PHASES.COMPLETE ||
-      (!f.onGround && (state.telemetry.agl ?? 0) > 80 && f.speed > 55))
-  ) {
-    m.phase = MISSION_PHASES.CRUISE;
-    state._lastMissionHint = null;
-    if (m.controlMode === "assisted") {
-      state.altitudeHold = { active: true, targetAlt: f.alt };
-      state.status = `Cruise HOLD at ${Math.round(f.alt)} m — L to release`;
+  if (m.phase === MISSION_PHASES.TAKEOFF) {
+    const agl = state.telemetry.agl ?? 0;
+    const tk = state.takeoff?.phase;
+    const v2 = state.takeoff?.speeds?.V2_MPS ?? 80;
+    const takeoffDone =
+      tk === TAKEOFF_PHASES.COMPLETE ||
+      (tk === TAKEOFF_PHASES.INITIAL_CLIMB &&
+        !f.gearDown &&
+        agl >= CRUISE_AGL_MIN_M * 0.45 &&
+        f.speed >= v2 * 0.88);
+
+    if (takeoffDone) {
+      if (state.takeoff && tk !== TAKEOFF_PHASES.COMPLETE) {
+        state.takeoff.phase = TAKEOFF_PHASES.COMPLETE;
+      }
+      m.phase = MISSION_PHASES.CRUISE;
+      state._lastMissionHint = null;
+      state.hyperSpeed = false;
+      if (f.speed > 290) f.speed = 280;
+      if (!f.gearDown) {
+        /* already up */
+      } else if (agl > 40) {
+        f.gearDown = false;
+        if (state.takeoff) state.takeoff.gearUpDone = true;
+      }
+      if (m.controlMode === "assisted") {
+        const terrainAlt = state.telemetry.terrainAlt ?? f.alt - agl;
+        const cruiseAlt = terrainAlt + CRUISE_AGL_M;
+        state.altitudeHold = { active: true, targetAlt: cruiseAlt };
+        state.status = `Cruise — climbing to ~${CRUISE_AGL_M} m AGL, ~${Math.round(CRUISE_TARGET_MPS * 1.94384)} kt. M = hyper when high enough.`;
+      } else {
+        state.status = "Cruise — press M above ~120 m AGL for hyper speed (Mach 100).";
+      }
     }
   }
 
@@ -223,7 +253,40 @@ export function applyAssistedControls(state, dt) {
   }
 
   if (m.phase === MISSION_PHASES.CRUISE) {
+    const terrainAlt = state.telemetry.terrainAlt ?? f.alt - agl;
+    const targetAlt = terrainAlt + CRUISE_AGL_M;
+    const aglNow = f.alt - terrainAlt;
+
+    if (!state.altitudeHold?.active) {
+      state.altitudeHold = { active: true, targetAlt };
+    } else if (state.altitudeHold.targetAlt < targetAlt - 40) {
+      state.altitudeHold.targetAlt = targetAlt;
+    }
+
+    if (nav && Math.abs(nav.headingErrorRad) > 0.12) {
+      f.heading =
+        (f.heading + nav.headingErrorRad * 0.1 * t + Math.PI * 2) % (Math.PI * 2);
+    }
+
+    if (f.gearDown) f.gearDown = false;
+
+    if (aglNow < CRUISE_AGL_M - 60) {
+      f.pitch = Math.min(0.14, f.pitch + t * 0.1);
+      f.throttle = Math.min(0.95, f.throttle + t * 0.25);
+    } else if (f.speed < CRUISE_TARGET_MPS * 0.92) {
+      f.throttle = Math.min(0.9, f.throttle + t * 0.18);
+      if (f.pitch < 0.06) f.pitch = Math.min(0.08, f.pitch + t * 0.04);
+    } else if (f.speed > SPEED_OF_SOUND_MS * 0.85 * 0.88) {
+      f.throttle = Math.max(0.5, f.throttle - t * 0.08);
+    }
+
     return;
+  }
+
+  if (m.phase === MISSION_PHASES.APPROACH && state.hyperSpeed) {
+    state.hyperSpeed = false;
+    if (f.speed > 98) f.speed = 90;
+    state.status = "Approach — hyper off, slowing for landing.";
   }
 
   if (m.phase === MISSION_PHASES.APPROACH && nav) {
