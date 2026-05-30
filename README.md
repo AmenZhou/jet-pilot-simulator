@@ -6,6 +6,30 @@ A jet flight game — originally designed by a 9-year-old, now extended with a *
 
 ---
 
+## Screenshots
+
+### Fly Earth — mission & cockpit
+
+SFO → LAX mission on the ground (sidebar, radar, route globe):
+
+![Fly Earth mission UI — SFO to LAX with radar and nav globe](docs/images/earth-mission-sfo-lax.png)
+
+Cockpit HUD during takeoff roll (V-speed tape, TCAS traffic list, telemetry):
+
+![Cockpit HUD during takeoff with V-speed tape and traffic](docs/images/earth-cockpit-takeoff.png)
+
+Chase camera — globe, destination pin, and AI traffic:
+
+![Chase camera view over the Earth with traffic and destination](docs/images/earth-chase-view.png)
+
+### Arcade mode (legacy)
+
+Local training sortie (`jet_pilot_simulator.html`):
+
+![Legacy arcade jet training sortie](docs/images/arcade-sortie.png)
+
+---
+
 ## Features
 
 | Feature | Description |
@@ -119,6 +143,7 @@ Logs: `ai-agent/logs/run-*.jsonl`
 
 ```
 jet-pilot-simulator/
+├── docs/images/            # README screenshots
 ├── earth.html              # Primary entry — Fly Earth
 ├── src/earth/
 │   ├── main.js             # Game loop, UI wiring
