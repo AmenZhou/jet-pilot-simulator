@@ -10,18 +10,21 @@ export function toggleAltitudeHold(state) {
     state.altitudeHold = {
       active: true,
       targetAlt: state.flight.alt,
+      userDisabled: false,
     };
     state.status = `Cruise HOLD at ${Math.round(state.altitudeHold.targetAlt)} m MSL — press L to release`;
     return true;
   }
 
-  state.altitudeHold = { active: false, targetAlt: null };
+  state.altitudeHold = { active: false, targetAlt: null, userDisabled: true };
   state.status = "Cruise hold OFF — manual pitch/throttle";
   return false;
 }
 
 export function setAltitudeHoldTarget(state, altM) {
-  if (!state.altitudeHold) state.altitudeHold = { active: false, targetAlt: null };
+  if (!state.altitudeHold) {
+    state.altitudeHold = { active: false, targetAlt: null, userDisabled: false };
+  }
   state.altitudeHold.targetAlt = altM;
   if (state.altitudeHold.active) {
     state.status = `HOLD target ${Math.round(altM)} m MSL`;

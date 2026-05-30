@@ -71,7 +71,7 @@ export function createState() {
     /** Chase-camera distance multiplier (scroll wheel / [ ]) */
     cameraZoom: 1,
     /** Cruise altitude hold (L to toggle) */
-    altitudeHold: { active: false, targetAlt: null },
+    altitudeHold: { active: false, targetAlt: null, userDisabled: false },
     /** Hyper Mach 100 — off during takeoff; toggle with M in cruise */
     hyperSpeed: false,
     /** When true, rAF only renders — Playwright agent steps via __earthStep */

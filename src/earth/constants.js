@@ -1,6 +1,13 @@
 /** Sea-level speed of sound (m/s) — used for Mach display and speed cap */
 export const SPEED_OF_SOUND_MS = 340.29;
 
+/** cesium-air.glb nose points +X (east) at HPR 0; flight heading 0 is north (+Y). */
+export const AIRCRAFT_MODEL_HEADING_OFFSET = -Math.PI / 2;
+
+export function modelHeadingFromFlight(headingRad) {
+  return (headingRad + AIRCRAFT_MODEL_HEADING_OFFSET + Math.PI * 4) % (Math.PI * 2);
+}
+
 /** Hard cap: 100× Mach (~34,029 m/s horizontal-equivalent in the flight model) */
 export const MAX_MACH = 100;
 

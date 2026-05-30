@@ -2,6 +2,8 @@
  * 3D traffic aircraft — glTF model (real mesh) with composite-box fallback.
  */
 
+import { modelHeadingFromFlight } from "./constants.js";
+
 const AIRCRAFT_MODEL_URI = "/models/cesium-air.glb";
 
 function modelScaleForType(t) {
@@ -76,7 +78,11 @@ function trafficLabel(Cesium, t) {
 
 function createModelEntity(viewer, t, Cesium) {
   const origin = Cesium.Cartesian3.fromDegrees(t.lon, t.lat, t.alt);
-  const hpr = new Cesium.HeadingPitchRoll(t.heading, t.pitch, t.roll ?? 0);
+  const hpr = new Cesium.HeadingPitchRoll(
+    modelHeadingFromFlight(t.heading),
+    t.pitch,
+    t.roll ?? 0
+  );
   const tint = Cesium.Color.fromCssColorString(t.baseColor || t.color || "#9eb4c8");
 
   const entity = viewer.entities.add({
@@ -133,7 +139,11 @@ export function createTrafficAircraftGroup(viewer, t, Cesium) {
 
 export function updateTrafficAircraftGroup(group, t, Cesium) {
   const origin = Cesium.Cartesian3.fromDegrees(t.lon, t.lat, t.alt);
-  const hpr = new Cesium.HeadingPitchRoll(t.heading, t.pitch, t.roll ?? 0);
+  const hpr = new Cesium.HeadingPitchRoll(
+    modelHeadingFromFlight(t.heading),
+    t.pitch,
+    t.roll ?? 0
+  );
   const orientation = Cesium.Transforms.headingPitchRollQuaternion(origin, hpr);
 
   if (group.mode === "model" && group.entity) {

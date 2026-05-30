@@ -193,7 +193,9 @@ export function updateMission(state) {
       if (m.controlMode === "assisted") {
         const terrainAlt = state.telemetry.terrainAlt ?? f.alt - agl;
         const cruiseAlt = terrainAlt + CRUISE_AGL_M;
-        state.altitudeHold = { active: true, targetAlt: cruiseAlt };
+        if (!state.altitudeHold?.userDisabled) {
+          state.altitudeHold = { active: true, targetAlt: cruiseAlt, userDisabled: false };
+        }
         state.status = `Cruise — climbing to ~${CRUISE_AGL_M} m AGL, ~${Math.round(CRUISE_TARGET_MPS * 1.94384)} kt. M = hyper when high enough.`;
       } else {
         state.status = "Cruise — press M above ~120 m AGL for hyper speed (Mach 100).";
@@ -257,10 +259,12 @@ export function applyAssistedControls(state, dt) {
     const targetAlt = terrainAlt + CRUISE_AGL_M;
     const aglNow = f.alt - terrainAlt;
 
-    if (!state.altitudeHold?.active) {
-      state.altitudeHold = { active: true, targetAlt };
-    } else if (state.altitudeHold.targetAlt < targetAlt - 40) {
-      state.altitudeHold.targetAlt = targetAlt;
+    if (!state.altitudeHold?.userDisabled) {
+      if (!state.altitudeHold?.active) {
+        state.altitudeHold = { active: true, targetAlt, userDisabled: false };
+      } else if (state.altitudeHold.targetAlt < targetAlt - 40) {
+        state.altitudeHold.targetAlt = targetAlt;
+      }
     }
 
     if (nav && Math.abs(nav.headingErrorRad) > 0.12) {

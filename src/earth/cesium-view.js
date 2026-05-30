@@ -1,5 +1,6 @@
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import { modelHeadingFromFlight } from "./constants.js";
 import {
   createTrafficAircraftGroup,
   updateTrafficAircraftGroup,
@@ -90,7 +91,7 @@ export async function initGlobe(container) {
     : Cesium.Cartesian3.fromDegrees(-122.375, 37.6189, 8);
 
   const playerHpr = new Cesium.HeadingPitchRoll(
-    spawn?.heading ?? 0,
+    modelHeadingFromFlight(spawn?.heading ?? 0),
     spawn?.pitch ?? 0,
     spawn?.roll ?? 0
   );
@@ -216,7 +217,7 @@ export function syncAircraftEntity(f) {
   aircraftEntity.position = pos;
   aircraftEntity.orientation = Cesium.Transforms.headingPitchRollQuaternion(
     pos,
-    new Cesium.HeadingPitchRoll(f.heading, f.pitch, f.roll)
+    new Cesium.HeadingPitchRoll(modelHeadingFromFlight(f.heading), f.pitch, f.roll)
   );
 }
 
