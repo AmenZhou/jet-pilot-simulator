@@ -1,4 +1,4 @@
-import { AIRPORTS, DEFAULT_AIRPORT } from "./constants.js";
+import { AIRPORTS, DEFAULT_AIRPORT, MAX_MACH } from "./constants.js";
 import { createState, spawnAtAirport, beginFlight, prepareRunway } from "./state.js";
 import {
   startMission as beginMissionRoute,
@@ -202,7 +202,7 @@ function syncPanel() {
     els.hyperBtn.classList.toggle("active-hold", Boolean(state.hyperSpeed));
     els.hyperBtn.disabled = state.flying && !canEnableHyperSpeed(state) && !state.hyperSpeed;
     els.hyperBtn.title = state.hyperSpeed
-      ? "Mach 100 cap"
+      ? `Mach ${MAX_MACH} cap`
       : "Enable above ~120 m AGL after takeoff";
   }
   if (els.telMission && state.flying) {

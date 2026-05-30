@@ -3,6 +3,7 @@ import {
   CRUISE_AGL_M,
   CRUISE_AGL_MIN_M,
   CRUISE_TARGET_MPS,
+  MAX_MACH,
   SPEED_OF_SOUND_MS,
 } from "./constants.js";
 import { computeNavTo } from "./nav.js";
@@ -198,7 +199,7 @@ export function updateMission(state) {
         }
         state.status = `Cruise — climbing to ~${CRUISE_AGL_M} m AGL, ~${Math.round(CRUISE_TARGET_MPS * 1.94384)} kt. M = hyper when high enough.`;
       } else {
-        state.status = "Cruise — press M above ~120 m AGL for hyper speed (Mach 100).";
+        state.status = `Cruise — press M above ~120 m AGL for hyper speed (Mach ${MAX_MACH}).`;
       }
     }
   }
