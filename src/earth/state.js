@@ -72,7 +72,7 @@ export function createState() {
     cameraZoom: 1,
     /** Cruise altitude hold (L to toggle) */
     altitudeHold: { active: false, targetAlt: null, userDisabled: false },
-    /** Hyper Mach 300 — off during takeoff; toggle with M in cruise */
+    /** Hyper Mach 200 — off during takeoff; toggle with M in cruise */
     hyperSpeed: false,
     /** When true, rAF only renders — Playwright agent steps via __earthStep */
     agentDrive: false,

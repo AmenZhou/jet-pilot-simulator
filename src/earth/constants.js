@@ -8,8 +8,8 @@ export function modelHeadingFromFlight(headingRad) {
   return (headingRad + AIRCRAFT_MODEL_HEADING_OFFSET + Math.PI * 4) % (Math.PI * 2);
 }
 
-/** Hard cap: 300× Mach (~102,087 m/s horizontal-equivalent in the flight model) */
-export const MAX_MACH = 300;
+/** Hard cap: 200× Mach (~68,058 m/s horizontal-equivalent in the flight model) */
+export const MAX_MACH = 200;
 
 /** Assisted / normal cruise band (AGL above terrain, meters) */
 export const CRUISE_AGL_M = 320;
