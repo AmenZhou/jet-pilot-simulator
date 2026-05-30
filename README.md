@@ -42,7 +42,7 @@ Local training sortie (`jet_pilot_simulator.html`):
 | **Cruise hold** | Press **L** to lock altitude (assisted cruise enables hold automatically) |
 | **Navigation** | Top-right **radar** (heading-up), bottom-left **globe** route view |
 | **AI traffic** | Up to 12 aircraft with TCAS-style **↑ / ● / ↓** altitude cues |
-| **Speed** | Up to **Mach 200** (arcade physics) |
+| **Speed** | Up to **Mach 300** (arcade physics) |
 | **AI agent** | Playwright + OpenAI/Claude/heuristic for automated test flights |
 
 ---
