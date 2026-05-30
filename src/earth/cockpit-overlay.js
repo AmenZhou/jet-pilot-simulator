@@ -80,7 +80,7 @@ export function initCockpitOverlay(el) {
   scene.add(rig);
   scene.add(new THREE.AmbientLight(0x8eb8ff, 0.45));
 
-  resize();
+  resizeCockpitOverlay();
   ready = true;
   return true;
 }

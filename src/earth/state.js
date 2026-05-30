@@ -1,4 +1,7 @@
 import { AIRPORTS, DEFAULT_AIRPORT, PHYSICS } from "./constants.js";
+import { createMissionState } from "./mission.js";
+import { MISSION_PHASES } from "./mission.js";
+import { initTakeoff, clearTakeoff } from "./takeoff.js";
 
 function airportSpawn(id) {
   const ap = AIRPORTS[id] || AIRPORTS[DEFAULT_AIRPORT];
@@ -7,15 +10,32 @@ function airportSpawn(id) {
     lon: ap.lon,
     alt: ap.alt + 3.5,
     heading: ap.heading,
-    pitch: 0.06,
+    pitch: 0.02,
     roll: 0,
     speed: 0,
-    throttle: 0.55,
+    throttle: 0,
     gearDown: true,
     onGround: true,
     crashed: false,
     airportId: ap.id,
   };
+}
+
+/** Park on runway — used when starting a mission */
+export function prepareRunway(state, airportId) {
+  state.airportId = airportId;
+  state.flight = airportSpawn(airportId);
+  state.flying = false;
+  state.flight.crashed = false;
+  state.paused = false;
+  state.flight.onGround = true;
+  state.flight.gearDown = true;
+  state.flight.speed = 0;
+  state.flight.throttle = 0;
+  state.flight.pitch = 0;
+  const ap = AIRPORTS[airportId];
+  if (ap) state.flight.heading = ap.heading;
+  clearTakeoff(state);
 }
 
 export function createState() {
@@ -24,8 +44,13 @@ export function createState() {
     paused: false,
     flying: false,
     gameSpeed: 1,
+    autoPatrol: false,
+    navTarget: null,
+    navOrigin: null,
+    mission: createMissionState(),
     airportId: DEFAULT_AIRPORT,
     flight: airportSpawn(DEFAULT_AIRPORT),
+    traffic: [],
     input: {
       throttleUp: false,
       throttleDown: false,
@@ -38,9 +63,15 @@ export function createState() {
       agl: 0,
       terrainAlt: 0,
       groundspeedKt: 0,
+      trafficNearby: 0,
+      nearestTrafficKm: null,
       terrain: { mode: "ellipsoid-airport-v1", source: "airport-pad", nearestAirport: null },
     },
     status: "Press Enter or Fly to begin — then explore the globe.",
+    /** Chase-camera distance multiplier (scroll wheel / [ ]) */
+    cameraZoom: 1,
+    /** Cruise altitude hold (L to toggle) */
+    altitudeHold: { active: false, targetAlt: null },
   };
 }
 
@@ -50,6 +81,15 @@ export function spawnAtAirport(state, airportId) {
   state.flying = false;
   state.flight.crashed = false;
   state.paused = false;
+  state.traffic = [];
+  state.telemetry.trafficNearby = 0;
+  state.telemetry.nearestTrafficKm = null;
+  if (state.mission?.active) {
+    state.mission.phase = "preflight";
+    state.mission.failReason = null;
+    state.mission.landedAt = null;
+  }
+  clearTakeoff(state);
   state.status = `Positioned at ${AIRPORTS[airportId]?.name || airportId} — Enter or Fly to depart.`;
 }
 
@@ -57,7 +97,12 @@ export function beginFlight(state) {
   if (state.flying) return;
   state.flying = true;
   state.flight.crashed = false;
-  state.status = "Free flight — W/S throttle, arrows pitch & turn.";
+  state.flight.onGround = true;
+  state.flight.speed = Math.max(0, state.flight.speed);
+  if (state.mission?.active && state.mission.phase === MISSION_PHASES.PREFLIGHT) {
+    state.mission.phase = MISSION_PHASES.TAKEOFF;
+  }
+  initTakeoff(state);
 }
 
-export { PHYSICS, AIRPORTS };
+export { PHYSICS, AIRPORTS, createMissionState };

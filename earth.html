@@ -31,7 +31,16 @@
           <div class="stat-label">Ground</div>
           <div class="stat-value stat-small" id="telTerrain">—</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">Mission</div>
+          <div class="stat-value stat-small" id="telMission">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Traffic</div>
+          <div class="stat-value stat-small" id="telTraffic">—</div>
+        </div>
       </div>
+      <div class="traffic-list hint-muted" id="telTrafficList">—</div>
 
       <div class="controls-group">
         <h2>Airport</h2>
@@ -42,23 +51,54 @@
           <button type="button" class="secondary" data-airport="JFK">JFK</button>
           <button type="button" class="secondary" data-airport="LHR">LHR</button>
           <button type="button" class="secondary" data-airport="NRT">NRT</button>
+          <button type="button" class="secondary" data-airport="SYD">SYD</button>
         </div>
+      </div>
+
+      <div class="controls-group">
+        <h2>Mission</h2>
+        <label class="field-label" for="controlModeSelect">Control</label>
+        <select id="controlModeSelect" class="select">
+          <option value="manual">Manual — you fly takeoff &amp; pitch</option>
+          <option value="assisted">Assisted — autopilot takeoff + cruise hold</option>
+        </select>
+        <div class="buttons mission-buttons">
+          <button type="button" id="missionBtn">Start mission</button>
+          <button type="button" class="secondary" id="cancelMissionBtn" hidden>Cancel</button>
+        </div>
+        <p class="nav-hint hint-muted">
+          Origin airport → destination: take off, fly any heading, land at destination (gear down, slow). Assisted helps throttle/pitch/gear; you still steer.
+        </p>
+      </div>
+
+      <div class="controls-group">
+        <h2>Navigation</h2>
+        <select id="navSelect" class="select">
+          <option value="">No destination</option>
+        </select>
+        <p class="nav-hint hint-muted">
+          Top-right <strong>radar</strong> is heading-up (you = orange, destination = green). Bottom-left <strong>globe</strong> shows the full route arc.
+        </p>
       </div>
 
       <div class="controls-group">
         <h2>Flight</h2>
         <div class="buttons">
-          <button type="button" id="flyBtn">Fly</button>
+          <button type="button" id="flyBtn">Fly / Takeoff roll</button>
+          <button type="button" class="secondary" id="holdBtn">Cruise hold</button>
           <button type="button" class="secondary" id="pauseBtn">Pause</button>
-          <button type="button" class="secondary" id="chaseBtn">Camera: Cockpit</button>
+          <button type="button" class="secondary" id="chaseBtn">Camera: Chase</button>
         </div>
       </div>
 
       <div class="hint">
-        <strong>Enter</strong> or <strong>Fly</strong> to start.<br />
+        <strong>Enter</strong> or <strong>Fly / Takeoff roll</strong> from runway (throttle 0).<br />
+        Takeoff: full thrust → rotate at <strong>VR</strong> (~146 kt) on HUD tape → gear up after liftoff.<br />
         <strong>W/S</strong> throttle · <strong>↑/↓</strong> pitch · <strong>←/→</strong> turn<br />
-        <strong>G</strong> gear · <strong>Space</strong> pause<br />
-        <span class="hint-muted">v1: free Cesium globe — no paid Ion required.</span>
+        <strong>G</strong> gear · <strong>L</strong> altitude hold · <strong>Space</strong> pause<br />
+        <strong>Scroll</strong> or <strong>[</strong> / <strong>]</strong> zoom globe (chase camera)<br />
+        Traffic: <strong>↑</strong> above · <strong>●</strong> same level · <strong>↓</strong> below (see TCAS list + radar)<br />
+        <span class="hint-muted">Max speed Mach 100 · v1 free Cesium globe (no Ion required).</span>
       </div>
 
       <p class="legacy-link">
@@ -70,6 +110,8 @@
       <div id="cesiumContainer" aria-label="Earth globe"></div>
       <div id="cockpitOverlay" aria-hidden="true"></div>
       <canvas id="hudCanvas"></canvas>
+      <canvas id="radarCanvas" class="radar-canvas" aria-label="Heading-up radar map"></canvas>
+      <canvas id="navMapCanvas" class="nav-map-canvas" aria-label="Navigation globe"></canvas>
     </main>
   </div>
 

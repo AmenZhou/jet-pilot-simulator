@@ -59,14 +59,14 @@ export function getGroundHeight(lon, lat, globeSampleFn, { useGlobeSample = fals
   return Math.max(globeH, proceduralBumpMeters(lat, lon) * 0.15);
 }
 
-export function getTerrainTelemetry(lat, lon, groundAlt) {
+export function getTerrainTelemetry(lat, lon, groundAlt, { ionActive = false } = {}) {
   const { airport, distM } = nearestAirport(lat, lon);
-  let source = "ellipsoid";
-  if (airport && distM <= AIRPORT_GROUND_RADIUS_M) source = "airport-pad";
-  else if (Math.abs(proceduralBumpMeters(lat, lon)) > 1) source = "procedural";
+  let source = ionActive ? "globe-ion" : "ellipsoid";
+  if (airport && distM <= AIRPORT_GROUND_RADIUS_M) source = ionActive ? "airport-pad+ion" : "airport-pad";
+  else if (!ionActive && Math.abs(proceduralBumpMeters(lat, lon)) > 1) source = "procedural";
 
   return {
-    mode: TERRAIN_MODE,
+    mode: ionActive ? "cesium-ion" : TERRAIN_MODE,
     source,
     nearestAirport: airport?.id ?? null,
     distToAirportM: Math.round(distM),

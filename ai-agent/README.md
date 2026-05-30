@@ -25,7 +25,17 @@ npx playwright install chromium
 **Earth mode** (start `npm run dev` in project root first):
 
 ```bash
+# Heuristic (no API key)
 node agent.js --earth --heuristic --headless --turns 90 --tick 700
+
+# OpenAI — reads OPENAI_API_KEY from ../.env automatically
+node agent.js --earth --model openai --headless --turns 30 --tick 2500
+
+# Fly SFO → LAX mission (assisted autopilot)
+node agent.js --earth --model openai --headed --from SFO --to LAX --control-mode assisted --turns 80 --tick 2500
+
+# Claude — reads ANTHROPIC_API_KEY from ../.env or env
+node agent.js --earth --model claude --headless --turns 30
 ```
 
 **Arcade legacy** (`python3 -m http.server 8766` in project root):
@@ -50,7 +60,9 @@ OPENAI_API_KEY=sk-... node agent.js --model openai
 - `--tick 2500`: tick interval in ms
 - `--turns 80`: max turns (0 = infinite)
 - `--model claude|openai|openai-mini`
-- `--continue-state`: do not reset mission context at startup
+- `--from SFO`: spawn airport (Earth only; default SFO)
+- `--to LAX`: navigation destination airport (Earth only)
+- `--control-mode manual|assisted`: mission flight assist (default assisted for agent runs)
 
 ## Earth actions (`--earth`)
 
@@ -61,8 +73,9 @@ OPENAI_API_KEY=sk-... node agent.js --model openai
 | `set_throttle` | Throttle 0.0–1.0 |
 | `set_pitch` | Pitch −0.8–0.8 |
 | `set_heading` | Heading radians |
+| `set_gear` | Landing gear — `params: { down: true \| false }` |
 | `set_game_speed` | Sim speed 1, 2, or 4 |
-| `toggle_gear` | Gear toggle |
+| `toggle_gear` | Gear toggle (legacy) |
 | `toggle_pause` | Pause/resume |
 
 ## Arcade actions

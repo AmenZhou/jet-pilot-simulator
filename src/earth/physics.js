@@ -1,4 +1,7 @@
-import { PHYSICS } from "./constants.js";
+import { PHYSICS, SPEED_OF_SOUND_MS, MAX_MACH } from "./constants.js";
+import { applyGroundTakeoffPhysics, isTakeoffActive } from "./takeoff.js";
+
+const MAX_SPEED_MPS = SPEED_OF_SOUND_MS * MAX_MACH;
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -18,26 +21,41 @@ export function updateFlightPhysics(state, dt, terrainAlt) {
 
   const yawDelta =
     (state.input.yawLeft ? 1 : 0) - (state.input.yawRight ? 1 : 0);
+  const prevHeading = f._prevHeading ?? f.heading;
   f.heading = (f.heading + yawDelta * dt * PHYSICS.YAW_RATE + Math.PI * 2) % (Math.PI * 2);
+  const hdgDelta = Math.atan2(
+    Math.sin(f.heading - prevHeading),
+    Math.cos(f.heading - prevHeading)
+  );
+  if (Math.abs(hdgDelta) > 0.00001) {
+    f.roll = clamp(-hdgDelta * 7, -0.45, 0.45);
+  } else if (yawDelta !== 0) {
+    f.roll = clamp(-yawDelta * 0.35, -0.45, 0.45);
+  } else {
+    f.roll = clamp(f.roll * 0.94, -0.45, 0.45);
+  }
+  f._prevHeading = f.heading;
 
   const thrust = PHYSICS.THRUST * f.throttle;
+  const groundExtra = f.onGround ? PHYSICS.GROUND_FRICTION * f.speed : 0;
   const drag =
     PHYSICS.DRAG * f.speed * f.speed +
-    (f.gearDown ? PHYSICS.GEAR_DRAG * f.speed : 0);
-  f.speed = clamp(f.speed + (thrust - drag) * dt, PHYSICS.MIN_SPEED, PHYSICS.MAX_SPEED);
+    (f.gearDown ? PHYSICS.GEAR_DRAG * f.speed : 0) +
+    groundExtra;
+  f.speed = clamp(f.speed + (thrust - drag) * dt, PHYSICS.MIN_SPEED, MAX_SPEED_MPS);
 
   const climb = f.speed * Math.sin(f.pitch);
   const horizontal = f.speed * Math.cos(f.pitch);
   f.alt += climb * dt;
-
-  f.roll = clamp(-yawDelta * 0.35, -0.45, 0.45);
 
   const agl = f.alt - terrainAlt;
   state.telemetry.agl = agl;
   state.telemetry.terrainAlt = terrainAlt;
   state.telemetry.groundspeedKt = horizontal * 1.94384;
 
-  if (f.onGround && f.throttle > 0.5 && f.speed > 22 && f.pitch > 0.04) {
+  if (isTakeoffActive(state)) {
+    applyGroundTakeoffPhysics(f, state, dt, terrainAlt);
+  } else if (f.onGround && f.throttle > 0.55 && f.speed > 68 && f.pitch > 0.05) {
     f.onGround = false;
   }
 

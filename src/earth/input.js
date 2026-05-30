@@ -1,4 +1,7 @@
-import { beginFlight, spawnAtAirport } from "./state.js";
+import { beginFlight, spawnAtAirport, AIRPORTS } from "./state.js";
+import { cancelMission, setControlMode } from "./mission.js";
+import { adjustCameraZoom } from "./cesium-view.js";
+import { toggleAltitudeHold } from "./cruise-hold.js";
 
 export function bindInput(state, onChange) {
   function down(event) {
@@ -35,6 +38,20 @@ export function bindInput(state, onChange) {
         break;
       case "Space":
         state.paused = !state.paused;
+        break;
+      case "BracketLeft":
+      case "Minus":
+        adjustCameraZoom(state, -1);
+        onChange();
+        break;
+      case "BracketRight":
+      case "Equal":
+        adjustCameraZoom(state, 1);
+        onChange();
+        break;
+      case "KeyL":
+        toggleAltitudeHold(state);
+        onChange();
         break;
       default:
         return;
@@ -76,11 +93,53 @@ export function bindInput(state, onChange) {
   };
 }
 
-export function bindPanel(state, elements, { flyToAirport, onChange }) {
+export function bindPanel(state, elements, { flyToAirport, onChange, startMissionFromPanel }) {
   elements.flyBtn.addEventListener("click", () => {
     beginFlight(state);
     onChange();
   });
+
+  if (elements.missionBtn && startMissionFromPanel) {
+    elements.missionBtn.addEventListener("click", () => {
+      startMissionFromPanel();
+    });
+  }
+
+  if (elements.cancelMissionBtn) {
+    elements.cancelMissionBtn.addEventListener("click", () => {
+      cancelMission(state);
+      onChange();
+    });
+  }
+
+  if (elements.controlModeSelect) {
+    elements.controlModeSelect.addEventListener("change", () => {
+      setControlMode(state, elements.controlModeSelect.value);
+      onChange();
+    });
+  }
+
+  if (elements.navSelect) {
+    elements.navSelect.addEventListener("change", () => {
+      const id = elements.navSelect.value;
+      if (!id) {
+        state.navTarget = null;
+        state.navOrigin = null;
+        state.status = "Navigation cleared.";
+      } else {
+        const ap = AIRPORTS[id];
+        if (ap) {
+          window.__earthAgent.setNavTarget({
+            id: ap.id,
+            name: ap.name,
+            lat: ap.lat,
+            lon: ap.lon,
+          });
+        }
+      }
+      onChange();
+    });
+  }
 
   elements.pauseBtn.addEventListener("click", () => {
     if (!state.flying) return;
@@ -93,8 +152,17 @@ export function bindPanel(state, elements, { flyToAirport, onChange }) {
     onChange();
   });
 
+  if (elements.holdBtn) {
+    elements.holdBtn.addEventListener("click", () => {
+      if (!state.flying) return;
+      toggleAltitudeHold(state);
+      onChange();
+    });
+  }
+
   elements.airportSelect.addEventListener("change", () => {
     const id = elements.airportSelect.value;
+    if (state.mission?.active) cancelMission(state);
     spawnAtAirport(state, id);
     flyToAirport(id);
     onChange();
@@ -104,6 +172,7 @@ export function bindPanel(state, elements, { flyToAirport, onChange }) {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-airport");
       elements.airportSelect.value = id;
+      if (state.mission?.active) cancelMission(state);
       spawnAtAirport(state, id);
       flyToAirport(id);
       onChange();

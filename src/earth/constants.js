@@ -1,14 +1,23 @@
+/** Sea-level speed of sound (m/s) — used for Mach display and speed cap */
+export const SPEED_OF_SOUND_MS = 340.29;
+
+/** Hard cap: 100× Mach (~34,029 m/s horizontal-equivalent in the flight model) */
+export const MAX_MACH = 100;
+
 export const PHYSICS = {
   MIN_SPEED: 0,
-  MAX_SPEED: 220,
-  THRUST: 28,
-  DRAG: 0.018,
-  THROTTLE_RATE: 0.5,
+  get MAX_SPEED() {
+    return SPEED_OF_SOUND_MS * MAX_MACH;
+  },
+  THRUST: 1158000,
+  DRAG: 0.001,
+  THROTTLE_RATE: 0.75,
   PITCH_RATE: 1.2,
   YAW_RATE: 0.9,
   MAX_PITCH: 0.55,
   MIN_PITCH: -0.45,
-  GEAR_DRAG: 0.006,
+  GEAR_DRAG: 0.012,
+  GROUND_FRICTION: 0.004,
   MIN_FLY_AGL: 8,
   CRASH_SINK: 18,
   GROUND_CLEARANCE: 1.2,
@@ -54,6 +63,14 @@ export const AIRPORTS = {
     lon: 140.3929,
     alt: 4,
     heading: 0.6,
+  },
+  SYD: {
+    id: "SYD",
+    name: "Sydney (YSSY)",
+    lat: -33.9399,
+    lon: 151.1753,
+    alt: 6,
+    heading: 2.71,
   },
 };
 
