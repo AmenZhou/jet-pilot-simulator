@@ -1,6 +1,6 @@
 # Jet Pilot Simulator
 
-Browser-based flight simulator with a **global Earth mode** (CesiumJS) and a legacy **arcade training sortie**. Fly from real airports, run missions, meet AI traffic, and drive the sim with keyboard or an LLM agent.
+A jet flight game — originally designed by a 9-year-old, now extended with a **global Earth mode** (CesiumJS) and a legacy **arcade training sortie**. Fly from real airports, run missions, meet AI traffic, and drive the sim with keyboard or an LLM agent.
 
 **Live dev URL:** `http://localhost:5173/earth.html` after `npm run dev`
 
