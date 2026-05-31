@@ -60,6 +60,20 @@ function partMaterial(Cesium, t, partName) {
 }
 
 function trafficLabel(Cesium, t) {
+  if (t.wreckPhase) {
+    return {
+      text: t.wreckPhase === "impacted" ? `💥 ${t.label}` : `🔥 ${t.label}`,
+      font: "bold 12px Inter, Segoe UI, sans-serif",
+      fillColor: Cesium.Color.fromCssColorString("#ff8844"),
+      outlineColor: Cesium.Color.fromCssColorString("#1a0800"),
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -36),
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 120000),
+      show: true,
+    };
+  }
   const sepLabel = t.verticalSep === "above" ? "↑" : t.verticalSep === "below" ? "↓" : "=";
   const altFt = Math.round((t.altOffsetM ?? 0) / 0.3048);
   return {
@@ -76,6 +90,28 @@ function trafficLabel(Cesium, t) {
   };
 }
 
+function modelTint(Cesium, t) {
+  if (t.wreckPhase) {
+    return Cesium.Color.fromCssColorString(t.wreckPhase === "impacted" ? "#331100" : "#ff5522");
+  }
+  return Cesium.Color.fromCssColorString(t.baseColor || t.color || "#9eb4c8");
+}
+
+function modelBlendAmount(t) {
+  return t.wreckPhase ? 0.72 : 0.35;
+}
+
+function silhouetteFor(Cesium, t) {
+  if (t.wreckPhase) {
+    return Cesium.Color.fromCssColorString("#ffaa33");
+  }
+  return Cesium.Color.fromCssColorString(t.color || "#71b0ff");
+}
+
+function silhouetteSizeFor(t) {
+  return t.wreckPhase ? 3.2 : 1.8;
+}
+
 function createModelEntity(viewer, t, Cesium) {
   const origin = Cesium.Cartesian3.fromDegrees(t.lon, t.lat, t.alt);
   const hpr = new Cesium.HeadingPitchRoll(
@@ -83,7 +119,7 @@ function createModelEntity(viewer, t, Cesium) {
     t.pitch,
     t.roll ?? 0
   );
-  const tint = Cesium.Color.fromCssColorString(t.baseColor || t.color || "#9eb4c8");
+  const tint = modelTint(Cesium, t);
 
   const entity = viewer.entities.add({
     name: t.label,
@@ -98,9 +134,9 @@ function createModelEntity(viewer, t, Cesium) {
       runAnimations: false,
       color: tint,
       colorBlendMode: Cesium.ColorBlendMode.MIX,
-      colorBlendAmount: 0.35,
-      silhouetteColor: Cesium.Color.fromCssColorString(t.color || "#71b0ff"),
-      silhouetteSize: 1.8,
+      colorBlendAmount: modelBlendAmount(t),
+      silhouetteColor: silhouetteFor(Cesium, t),
+      silhouetteSize: silhouetteSizeFor(t),
     },
     label: trafficLabel(Cesium, t),
   });
@@ -151,12 +187,16 @@ export function updateTrafficAircraftGroup(group, t, Cesium) {
     group.entity.orientation = orientation;
     if (group.entity.model) {
       group.entity.model.scale = modelScaleForType(t);
-      group.entity.model.color = Cesium.Color.fromCssColorString(t.baseColor || t.color || "#9eb4c8");
+      group.entity.model.color = modelTint(Cesium, t);
+      group.entity.model.colorBlendAmount = modelBlendAmount(t);
+      group.entity.model.silhouetteColor = silhouetteFor(Cesium, t);
+      group.entity.model.silhouetteSize = silhouetteSizeFor(t);
     }
     if (group.entity.label) {
       const lbl = trafficLabel(Cesium, t);
       group.entity.label.text = lbl.text;
       group.entity.label.fillColor = lbl.fillColor;
+      group.entity.label.font = lbl.font;
     }
     return;
   }

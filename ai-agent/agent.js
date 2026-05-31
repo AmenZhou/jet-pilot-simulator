@@ -365,8 +365,10 @@ function isAssistedTakeoffActive(gs) {
 
 function decideCombatAction(gs) {
   if (!EARTH || gs.mission?.phase !== "cruise" || !gs.afford?.canControl) return null;
+  if ((gs.flight?.agl ?? 0) < 100) return null;
+  if (gs.takeoffPhase && gs.takeoffPhase !== "complete" && gs.takeoffPhase !== "idle") return null;
   const target = gs.nearestTraffic;
-  if (!target || target.km > 10) return null;
+  if (!target || target.km > 18) return null;
 
   if (gs.combat?.missileLockReady && (gs.combat?.missileCooldown ?? 0) <= 0.05) {
     return {
@@ -376,23 +378,27 @@ function decideCombatAction(gs) {
     };
   }
 
-  if (Math.abs(target.headingErrorRad) > 0.12) {
+  if (Math.abs(target.headingErrorRad) > 0.08) {
     return {
       action: "set_heading",
-      params: { value: target.bearingRad },
-      reasoning: `[combat-auto] aim at ${target.label} (${target.km} km)`,
+      params: { value: target.bearingRad, interceptId: target.id },
+      reasoning: `[combat-auto] intercept ${target.label} (${target.km} km)`,
     };
   }
 
-  if (target.km <= 5) {
+  if (target.km <= 4.5) {
     return {
       action: "fire_gun",
-      params: {},
-      reasoning: `[combat-auto] guns on ${target.label} @ ${target.km} km`,
+      params: { burst: 12 },
+      reasoning: `[combat-auto] gun burst on ${target.label} @ ${target.km} km`,
     };
   }
 
-  return null;
+  return {
+    action: "set_throttle",
+    params: { value: 0.68 },
+    reasoning: `[combat-auto] close on ${target.label} (${target.km} km)`,
+  };
 }
 
 function guardAssistedTakeoffAction(action, gs) {
@@ -418,8 +424,10 @@ function validActionsThisTurn(gs) {
     if (!gs.mission?.active && gs.navTarget) out.push("start_mission");
     if (gs.afford.canRespawn) out.push("respawn");
     if (gs.afford.canToggleHyper) out.push("toggle_hyper");
-    if (gs.afford.canControl) {
+    if (gs.afford.canControl && gs.mission?.phase === "cruise" && (gs.flight?.agl ?? 0) >= 100) {
       out.push("fire_gun", "fire_missile");
+    }
+    if (gs.afford.canControl) {
       out.push(
         "set_throttle",
         "set_pitch",
@@ -744,7 +752,11 @@ async function execute(page, action) {
         await page.evaluate(({ value }) => window.__earthAgent.setPitch(value), params);
         break;
       case "set_heading":
-        await page.evaluate(({ value }) => window.__earthAgent.setHeading(value), params);
+        await page.evaluate(({ value, interceptId }) => {
+          window.__earthAgent.setHeading(value);
+          const id = interceptId || window.__earthAgent.pickNearestTraffic?.(18)?.id;
+          if (id) window.__earthAgent.setCombatIntercept(id);
+        }, params);
         break;
       case "toggle_gear":
         await page.evaluate(() => window.__earthAgent.toggleGear());
@@ -759,10 +771,17 @@ async function execute(page, action) {
         await page.evaluate(() => window.__earthAgent.toggleHyperSpeed());
         break;
       case "fire_gun":
-        await page.evaluate(() => window.__earthAgent.fireGun());
+        await page.evaluate(({ burst }) => {
+          const n = Math.max(1, Math.min(20, burst || 12));
+          for (let i = 0; i < n; i++) window.__earthAgent.fireGun();
+        }, params);
         break;
       case "fire_missile":
-        await page.evaluate(() => window.__earthAgent.fireMissile());
+        await page.evaluate(() => {
+          window.__earthAgent.fireMissile();
+          const near = window.__earthAgent.pickNearestTraffic?.(18);
+          if (near?.id) window.__earthAgent.setCombatIntercept(near.id);
+        });
         break;
       case "set_game_speed":
         await page.evaluate(({ speed }) => window.__earthAgent.setGameSpeed(speed), params);
@@ -960,18 +979,14 @@ async function runEarthPhysicsStep(page, session, logger, turn) {
   const dt = TICK_MS / 1000;
   const before = EARTH ? await readVisualSnapshot(page) : null;
 
-  if (!HEADLESS) {
-    const frames = Math.max(10, Math.min(40, Math.floor(TICK_MS / 25)));
-    const subDt = dt / frames;
-    const frameMs = Math.floor(TICK_MS / frames);
-    for (let f = 0; f < frames; f += 1) {
-      await page.evaluate(({ step }) => window.__earthStep?.(step), { step: subDt });
-      await page.waitForTimeout(frameMs);
-    }
-  } else {
-    await page.evaluate(({ step }) => window.__earthStep?.(step), { step: dt });
-    await page.waitForTimeout(TICK_MS);
+  const frames = Math.max(10, Math.min(80, Math.floor(TICK_MS / 25)));
+  const subDt = dt / frames;
+  const frameMs = HEADLESS ? 0 : Math.floor(TICK_MS / frames);
+  for (let f = 0; f < frames; f += 1) {
+    await page.evaluate(({ step }) => window.__earthStep?.(step), { step: subDt });
+    if (frameMs > 0) await page.waitForTimeout(frameMs);
   }
+  if (HEADLESS) await page.waitForTimeout(TICK_MS);
 
   if (before && EARTH) {
     const after = await readVisualSnapshot(page);
@@ -1005,7 +1020,7 @@ async function checkPageFaults(page, turn, logger, session) {
 
 async function beginEarthTakeoffIfNeeded(page, route = null) {
   await page.evaluate(
-    ({ from, to, mode, gameSpeed }) => {
+    ({ from, to, mode, gameSpeed, forceGameSpeed }) => {
       const s = window.__earthState;
       if (!s.mission?.active && from && to) {
         window.__earthAgent.setControlMode(mode);
@@ -1017,7 +1032,7 @@ async function beginEarthTakeoffIfNeeded(page, route = null) {
         window.__earthAgent.beginFlight();
       }
       s.paused = false;
-      if (s.takeoff?.phase && s.takeoff.phase !== "complete") {
+      if (forceGameSpeed || (s.takeoff?.phase && s.takeoff.phase !== "complete")) {
         window.__earthAgent.setGameSpeed(gameSpeed);
       }
     },
@@ -1026,6 +1041,7 @@ async function beginEarthTakeoffIfNeeded(page, route = null) {
       to: route?.to || null,
       mode: route?.mode || "assisted",
       gameSpeed: HEADLESS ? 4 : 1,
+      forceGameSpeed: HEADLESS,
     }
   );
 }
@@ -1114,8 +1130,9 @@ async function tick(page, turn, logger, session) {
   }
 
   let action;
+  const combatAction = decideCombatAction(gs);
   if (HEURISTIC) {
-    action = guardAssistedTakeoffAction(
+    action = combatAction || guardAssistedTakeoffAction(
       skipDuplicateAction(clampAction(normalizeAction(decideHeuristic(gs)), gs, session), gs, session),
       gs
     );
@@ -1144,10 +1161,10 @@ async function tick(page, turn, logger, session) {
       gs.combat && (gs.trafficContacts?.length || gs.combat.kills > 0)
         ? `\nCombat: kills=${gs.combat.kills}, missileLockReady=${gs.combat.missileLockReady}, nearest=${JSON.stringify(gs.nearestTraffic || null)}. Prefer fire_missile when locked, else set_heading toward nearest traffic then fire_gun when <5 km.`
         : "";
-    const combatAction = decideCombatAction(gs);
-    if (combatAction) {
+    const combatActionLLM = decideCombatAction(gs);
+    if (combatActionLLM) {
       action = guardAssistedTakeoffAction(
-        skipDuplicateAction(clampAction(normalizeAction(combatAction), gs), gs, session),
+        skipDuplicateAction(clampAction(normalizeAction(combatActionLLM), gs), gs, session),
         gs
       );
     } else {

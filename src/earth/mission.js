@@ -7,6 +7,7 @@ import {
   SPEED_OF_SOUND_MS,
 } from "./constants.js";
 import { computeNavTo } from "./nav.js";
+import { isCombatInterceptActive } from "./weapons.js";
 import {
   applyAssistedTakeoff,
   updateTakeoff,
@@ -268,12 +269,31 @@ export function applyAssistedControls(state, dt) {
       }
     }
 
-    if (nav && Math.abs(nav.headingErrorRad) > 0.12) {
+    if (f.gearDown) f.gearDown = false;
+
+    if (f.gearDown) f.gearDown = false;
+
+    const interceptId = state.combat?.interceptTargetId;
+    const bandit =
+      isCombatInterceptActive(state) && interceptId
+        ? state.traffic.find((t) => t.id === interceptId)
+        : null;
+
+    if (bandit) {
+      const toBandit = computeNavTo(f, bandit);
+      if (toBandit && Math.abs(toBandit.headingErrorRad) > 0.06) {
+        f.heading =
+          (f.heading + toBandit.headingErrorRad * 0.22 * t + Math.PI * 2) % (Math.PI * 2);
+      }
+      const altErr = bandit.alt - f.alt;
+      f.pitch = Math.max(-0.1, Math.min(0.14, altErr * 0.00035));
+      if (toBandit && toBandit.distM < 6500) {
+        f.throttle = Math.min(f.throttle, 0.72);
+      }
+    } else if (nav && Math.abs(nav.headingErrorRad) > 0.12) {
       f.heading =
         (f.heading + nav.headingErrorRad * 0.1 * t + Math.PI * 2) % (Math.PI * 2);
     }
-
-    if (f.gearDown) f.gearDown = false;
 
     if (aglNow < CRUISE_AGL_M - 60) {
       f.pitch = Math.min(0.14, f.pitch + t * 0.1);

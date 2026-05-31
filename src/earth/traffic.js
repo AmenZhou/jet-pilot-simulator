@@ -173,9 +173,52 @@ function spawnTrafficPlane(player) {
 
 export function clearTraffic(state) {
   state.traffic = [];
+  clearWrecks(state);
   state.telemetry.trafficNearby = 0;
   state.telemetry.nearestTrafficKm = null;
   state.telemetry.trafficContacts = [];
+}
+
+function spawnBanditAhead(player) {
+  const typeId = Math.random() < 0.35 ? "military" : "regional";
+  const spec = TRAFFIC_TYPES[typeId];
+  const distM = (2800 + Math.random() * 5200);
+  const bearingToSpawn = player.heading + (Math.random() - 0.5) * 0.35;
+  const pos = destinationPoint(player.lat, player.lon, bearingToSpawn, distM);
+  const altOffsetM = (Math.random() - 0.5) * 320;
+  const alt = Math.max(player.alt + 80, player.alt + altOffsetM);
+  return {
+    id: `bandit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: typeId,
+    label: spec.label,
+    lat: pos.lat,
+    lon: pos.lon,
+    alt,
+    altOffsetM: alt - player.alt,
+    verticalSep: classifyVerticalSep(alt - player.alt),
+    heading: player.heading + Math.PI + (Math.random() - 0.5) * 0.8,
+    pitch: 0,
+    roll: 0,
+    speed: Math.max(170, Math.min(player.speed * 0.95, 260)),
+    color: "#ff6b6b",
+    baseColor: spec.color,
+    length: spec.length,
+    width: spec.width,
+    height: spec.height,
+  };
+}
+
+function ensureBanditTraffic(state) {
+  const player = state.flight;
+  const hasBandit = state.traffic.some((t) => {
+    const km = horizontalDistanceM(player, t) / 1000;
+    return km >= 2 && km <= 14 && Math.abs(t.alt - player.alt) < 600;
+  });
+  if (hasBandit) return;
+  if (state.traffic.length >= MAX_TRAFFIC) {
+    state.traffic.shift();
+  }
+  state.traffic.push(spawnBanditAhead(player));
 }
 
 export function maintainTraffic(state) {
@@ -195,6 +238,8 @@ export function maintainTraffic(state) {
   while (state.traffic.length < MAX_TRAFFIC) {
     state.traffic.push(spawnTrafficPlane(player));
   }
+
+  ensureBanditTraffic(state);
 }
 
 export function updateTraffic(state, dt, Cesium) {

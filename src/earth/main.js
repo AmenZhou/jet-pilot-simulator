@@ -15,6 +15,7 @@ import {
   syncAircraftEntity,
   syncTrafficEntities,
   clearTrafficEntities,
+  syncWreckEntities,
   syncNavDestination,
   flyToAirport as cameraFlyTo,
   bindGlobeZoom,
@@ -23,14 +24,19 @@ import {
   getCesium,
   getViewer,
 } from "./cesium-view.js";
+import { syncWeaponEffects, clearWeaponEffects } from "./weapon-effects.js";
+import { updateCombatAim } from "./combat-aim.js";
+import { syncAimTargetMarkers, clearAimTargetMarkers } from "./aim-target-view.js";
 import { getGroundHeight, getTerrainTelemetry } from "./terrain.js";
 import { computeNavTo } from "./nav.js";
 import { updateFlightPhysics, moveAlongHeading } from "./physics.js";
 import { maintainTraffic, updateTraffic, clearTraffic } from "./traffic.js";
+import { updateWrecks } from "./traffic-wreck.js";
+import { spawnWreckImpactEffect } from "./weapon-effects.js";
 import { applyAltitudeHold, toggleAltitudeHold } from "./cruise-hold.js";
 import { updateTakeoff, isTakeoffActive } from "./takeoff.js";
 import { toggleHyperSpeed, speedModeLabel, canEnableHyperSpeed, hyperBlockReason, getSpeedCapMps } from "./speed-mode.js";
-import { updateWeapons, fireGun, fireMissile } from "./weapons.js";
+import { updateWeapons, fireGun, fireMissile, setCombatIntercept, pickNearestTraffic } from "./weapons.js";
 import { drawHud } from "./hud.js";
 import { drawGlobePanel } from "./nav-map.js";
 import { drawRadarPanel } from "./radar-map.js";
@@ -115,6 +121,8 @@ window.__earthAgent = {
   speedCapMach: () => getSpeedCapMps(state) / SPEED_OF_SOUND_MS,
   fireGun: () => fireGun(state),
   fireMissile: () => fireMissile(state),
+  setCombatIntercept: (id) => setCombatIntercept(state, id),
+  pickNearestTraffic: (maxKm) => pickNearestTraffic(state, maxKm),
   setAgentDrive: (on) => {
     state.agentDrive = Boolean(on);
   },
@@ -361,7 +369,17 @@ function populateAirports() {
 function renderPresentation() {
   syncAircraftEntity(state.flight);
   syncTrafficEntities(state.traffic);
+  syncWreckEntities(state.wrecks);
   syncNavDestination(state.navTarget);
+  const viewer = getViewer();
+  const Cesium = getCesium();
+  const hudW = Math.max(els.hud.clientWidth, 1);
+  const hudH = Math.max(els.hud.clientHeight, 1);
+  if (viewer && Cesium) {
+    updateCombatAim(state, viewer, Cesium, hudW, hudH);
+    syncAimTargetMarkers(viewer, state, Cesium);
+    syncWeaponEffects(viewer, state, Cesium);
+  }
   const cockpitVisible = state.flying && !state.showChase;
   updateCockpitOverlay(state.flight, cockpitVisible);
   if (state.flying) {
@@ -371,7 +389,6 @@ function renderPresentation() {
       syncCameraFromFlight(state.flight);
     }
   }
-  const viewer = getViewer();
   if (viewer && !viewer.isDestroyed()) {
     viewer.scene.requestRender();
   }
@@ -424,6 +441,15 @@ function stepSimulation(dt) {
 
   maintainTraffic(state);
   updateTraffic(state, dt * state.gameSpeed, Cesium);
+
+  const wreckImpacts = updateWrecks(state, dt, Cesium, (lon, lat) =>
+    getGroundHeight(lon, lat, globeSample, { useGlobeSample })
+  );
+  for (const wreck of wreckImpacts) {
+    spawnWreckImpactEffect(state, wreck);
+    state.status = `${wreck.label} crashed — fireball on impact!`;
+  }
+
   updateWeapons(state, dt, Cesium);
 
   renderPresentation();

@@ -3,6 +3,7 @@ import { createMissionState } from "./mission.js";
 import { MISSION_PHASES } from "./mission.js";
 import { initTakeoff, clearTakeoff } from "./takeoff.js";
 import { createCombatState } from "./weapons.js";
+import { clearWrecks } from "./traffic-wreck.js";
 
 function airportSpawn(id) {
   const ap = AIRPORTS[id] || AIRPORTS[DEFAULT_AIRPORT];
@@ -52,6 +53,7 @@ export function createState() {
     airportId: DEFAULT_AIRPORT,
     flight: airportSpawn(DEFAULT_AIRPORT),
     traffic: [],
+    wrecks: [],
     input: {
       throttleUp: false,
       throttleDown: false,
@@ -89,6 +91,7 @@ export function spawnAtAirport(state, airportId) {
   state.flight.crashed = false;
   state.paused = false;
   state.traffic = [];
+  state.wrecks = [];
   state.telemetry.trafficNearby = 0;
   state.telemetry.nearestTrafficKm = null;
   state.combat = createCombatState();

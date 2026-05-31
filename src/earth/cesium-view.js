@@ -11,6 +11,7 @@ let viewer = null;
 let aircraftEntity = null;
 let destEntity = null;
 const trafficEntities = new Map();
+const wreckEntities = new Map();
 
 export function getViewer() {
   return viewer;
@@ -166,6 +167,50 @@ export function clearTrafficEntities() {
     removeTrafficAircraftGroup(viewer, group);
   }
   trafficEntities.clear();
+  clearWreckEntities();
+}
+
+export function syncWreckEntities(wreckList) {
+  if (!viewer) return;
+  try {
+    syncWreckEntitiesInner(wreckList);
+  } catch (err) {
+    console.warn("[wreck] sync failed:", err?.message || err);
+  }
+}
+
+function syncWreckEntitiesInner(wreckList) {
+  const active = new Set((wreckList || []).map((w) => w.id));
+
+  for (const [id, group] of wreckEntities) {
+    if (!active.has(id)) {
+      removeTrafficAircraftGroup(viewer, group);
+      wreckEntities.delete(id);
+    }
+  }
+
+  for (const w of wreckList || []) {
+    let group = wreckEntities.get(w.id);
+    if (!group) {
+      group = createTrafficAircraftGroup(viewer, w, Cesium);
+      wreckEntities.set(w.id, group);
+    }
+    updateTrafficAircraftGroup(group, w, Cesium);
+    if (group.entity) group.entity.show = true;
+    if (group.parts) {
+      for (const entity of Object.values(group.parts)) {
+        if (entity) entity.show = true;
+      }
+    }
+  }
+}
+
+export function clearWreckEntities() {
+  if (!viewer) return;
+  for (const group of wreckEntities.values()) {
+    removeTrafficAircraftGroup(viewer, group);
+  }
+  wreckEntities.clear();
 }
 
 export function syncNavDestination(navTarget) {
@@ -301,6 +346,7 @@ export function setAircraftVisible(show) {
 
 export function destroyGlobe() {
   clearTrafficEntities();
+  clearWreckEntities();
   if (viewer && !viewer.isDestroyed()) {
     viewer.destroy();
   }

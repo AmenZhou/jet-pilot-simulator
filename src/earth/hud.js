@@ -14,9 +14,14 @@ export function drawHud(ctx, width, height, state) {
   const cx = width / 2;
   const cy = height / 2;
   const hitFlash = state.combat?.lastHitFlash && performance.now() - state.combat.lastHitFlash < 280;
+  const gunFlash = state.combat?.lastGunFlash && performance.now() - state.combat.lastGunFlash < 120;
+  const mslFlash = state.combat?.lastMissileFlash && performance.now() - state.combat.lastMissileFlash < 500;
   if (hitFlash) {
     ctx.strokeStyle = "rgba(255, 120, 90, 0.95)";
     ctx.lineWidth = 3;
+  } else if (gunFlash) {
+    ctx.strokeStyle = "rgba(255, 220, 80, 0.9)";
+    ctx.lineWidth = 2.5;
   }
   ctx.beginPath();
   ctx.moveTo(cx - 26, cy);
@@ -50,6 +55,11 @@ export function drawHud(ctx, width, height, state) {
   drawBox(ctx, width - rightInset - 150, 78, "KILLS", String(kills), kills > 0);
   if (state.combat?.lockId && state.flying) {
     drawBox(ctx, width - rightInset - 150, 140, "LOCK", "MSL RDY", true);
+  }
+  if (mslFlash && state.flying) {
+    drawBox(ctx, width / 2 - 52, 140, "MSL", "AWAY", true);
+  } else if (gunFlash && state.flying) {
+    drawBox(ctx, width / 2 - 52, 140, "GUN", "FIRE", true);
   }
   drawBox(ctx, 16, height - 72, "AGL M", String(Math.round(t.agl)), t.agl < 30);
   const groundLabel = t.terrain?.nearestAirport || state.airportId || "MSL";
@@ -98,6 +108,10 @@ export function drawHud(ctx, width, height, state) {
   const contacts = state.telemetry?.trafficContacts || [];
   if (contacts.length > 0 && state.flying) {
     drawTrafficTcas(ctx, width, contacts);
+  }
+
+  if (state.flying) {
+    drawCombatAimView(ctx, width, height, state);
   }
 
   if (state.mission?.active) {
@@ -254,4 +268,182 @@ function drawBanner(ctx, width, height, title, sub) {
   ctx.fillStyle = "#b8d4f0";
   ctx.fillText(sub, width / 2, height * 0.38 + 58);
   ctx.textAlign = "start";
+}
+
+function drawCombatAimView(ctx, width, height, state) {
+  const aim = state.combat?.aim;
+  if (!aim?.active) return;
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const firing = Boolean(state.input?.fireGun);
+  const locked = Boolean(aim.missileLock);
+  const accent = locked ? "#ff6644" : firing ? "#ffe566" : "#5eb8ff";
+
+  drawAimScopePanel(ctx, width, aim, accent, firing, locked);
+
+  if (aim.hasTarget && aim.visible) {
+    const tx = aim.onScreen ? aim.x : aim.edgeX;
+    const ty = aim.onScreen ? aim.y : aim.edgeY;
+    drawAimLeadLine(ctx, cx, cy, tx, ty, accent, aim.onScreen);
+    if (aim.onScreen) {
+      drawScreenTargetReticle(ctx, tx, ty, aim, accent);
+    } else {
+      drawOffScreenAimCue(ctx, tx, ty, aim.edgeAngle, accent);
+    }
+  } else if (aim.active && !aim.hasTarget) {
+    ctx.fillStyle = "rgba(255, 180, 80, 0.85)";
+    ctx.font = "11px Inter, Segoe UI, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("NO TARGET — turn toward traffic", cx, cy + 56);
+    ctx.textAlign = "start";
+  }
+}
+
+function drawAimScopePanel(ctx, width, aim, accent, firing, locked) {
+  const pw = 212;
+  const ph = 118;
+  const px = width / 2 - pw / 2;
+  const py = 40;
+  const pcx = px + pw / 2;
+  const pcy = py + ph / 2;
+
+  ctx.fillStyle = "rgba(4, 12, 22, 0.94)";
+  ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px, py, pw, ph);
+
+  ctx.strokeStyle = "rgba(113, 176, 255, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px + 12, pcy);
+  ctx.lineTo(px + pw - 12, pcy);
+  ctx.moveTo(pcx, py + 14);
+  ctx.lineTo(pcx, py + ph - 14);
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.font = "bold 10px Inter, Segoe UI, Arial, sans-serif";
+  ctx.textAlign = "left";
+  const modeLabel = firing ? "GUN" : locked ? "MSL LOCK" : aim.mode || "TRACK";
+  ctx.fillText(`AIM ${modeLabel}`, px + 10, py + 16);
+
+  if (aim.hasTarget) {
+    const offX = clamp((aim.headingErrorRad || 0) * 140, -72, 72);
+    const offY = clamp(-(aim.altDiffM || 0) * 0.07, -36, 36);
+    const pipX = pcx + offX;
+    const pipY = pcy + offY;
+
+    drawTargetDiamond(ctx, pipX, pipY, aim.inGunRange ? "#ffe566" : "#ff8844", 11);
+
+    ctx.fillStyle = "#e7eefb";
+    ctx.font = "bold 13px Inter, Segoe UI, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(aim.label, pcx, py + ph - 34);
+    ctx.font = "10px Inter, Segoe UI, Arial, sans-serif";
+    ctx.fillStyle = "#b8d4f0";
+    const altSign = aim.altDiffM >= 0 ? "+" : "";
+    ctx.fillText(`${aim.km} km · ${altSign}${aim.altDiffM} m`, pcx, py + ph - 18);
+
+    const status =
+      aim.inGunRange && firing
+        ? "GUN IN RANGE"
+        : aim.missileLock
+          ? "MISSILE LOCK"
+          : aim.inGunRange
+            ? "GUNS READY"
+            : "CLOSE / ALIGN";
+    ctx.fillStyle = aim.inGunRange || aim.missileLock ? "#ffe566" : "#ffb347";
+    ctx.font = "bold 10px Inter, Segoe UI, Arial, sans-serif";
+    ctx.fillText(status, pcx, py + ph - 4);
+  } else {
+    ctx.fillStyle = "#9db0cf";
+    ctx.font = "11px Inter, Segoe UI, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Scanning forward cone…", pcx, pcy + 4);
+  }
+  ctx.textAlign = "start";
+}
+
+function drawAimLeadLine(ctx, cx, cy, tx, ty, accent, onScreen) {
+  ctx.save();
+  ctx.strokeStyle = onScreen ? `${accent}88` : "rgba(255, 136, 68, 0.55)";
+  ctx.lineWidth = onScreen ? 1.5 : 1;
+  ctx.setLineDash(onScreen ? [6, 8] : [4, 6]);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawScreenTargetReticle(ctx, x, y, aim, accent) {
+  const size = aim.inGunRange ? 28 : 22;
+  const color = aim.missileLock ? "#ff6644" : aim.inGunRange ? "#ffe566" : accent;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = aim.missileLock ? 2.5 : 2;
+
+  drawTargetDiamond(ctx, x, y, color, size);
+
+  const bracket = size + 10;
+  const gap = 6;
+  ctx.beginPath();
+  ctx.moveTo(x - bracket, y - bracket + gap);
+  ctx.lineTo(x - bracket, y - bracket);
+  ctx.lineTo(x - bracket + gap, y - bracket);
+  ctx.moveTo(x + bracket - gap, y - bracket);
+  ctx.lineTo(x + bracket, y - bracket);
+  ctx.lineTo(x + bracket, y - bracket + gap);
+  ctx.moveTo(x + bracket, y + bracket - gap);
+  ctx.lineTo(x + bracket, y + bracket);
+  ctx.lineTo(x + bracket - gap, y + bracket);
+  ctx.moveTo(x - bracket + gap, y + bracket);
+  ctx.lineTo(x - bracket, y + bracket);
+  ctx.lineTo(x - bracket, y + bracket - gap);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(6, 18, 30, 0.82)";
+  ctx.fillRect(x - 34, y + bracket + 6, 68, 16);
+  ctx.fillStyle = color;
+  ctx.font = "bold 10px Inter, Segoe UI, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`${aim.label} ${aim.km}km`, x, y + bracket + 17);
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+
+function drawOffScreenAimCue(ctx, x, y, angle, accent) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-8, -7);
+  ctx.lineTo(-8, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTargetDiamond(ctx, x, y, color, size) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
 }
