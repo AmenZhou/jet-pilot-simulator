@@ -113,7 +113,7 @@ function advanceTakeoffPhase(state, agl, climbing) {
     state.status = "Liftoff — positive rate. Gear up (G) when safe.";
   }
 
-  if (tk.phase === TAKEOFF_PHASES.LIFTOFF && agl > 12 && climbing) {
+  if (tk.phase === TAKEOFF_PHASES.LIFTOFF && agl > 12 && (climbing || agl > 20)) {
     tk.phase = TAKEOFF_PHASES.INITIAL_CLIMB;
     state.status = `Initial climb — maintain ≥ ${tk.speeds.V2_KT} kt to 400 ft AGL.`;
   }
@@ -170,7 +170,7 @@ export function applyAssistedTakeoff(state, dt) {
     } else if (f.pitch > targetClimbPitchRad + 0.02) {
       f.pitch = Math.max(targetClimbPitchRad, f.pitch - t * 0.12);
     }
-    if (agl > 18 && climbing && f.gearDown && !tk.gearUpDone) {
+    if (agl > 18 && f.gearDown && !tk.gearUpDone && (climbing || agl > 25)) {
       f.gearDown = false;
       tk.gearUpDone = true;
     }

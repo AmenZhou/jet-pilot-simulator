@@ -166,13 +166,20 @@ Mission phases: preflight → takeoff → cruise → approach → landed (or fai
 - approach (within ~45 km): gear down, reduce throttle, descend; align with destination.
 - landed: wait. If failed/crashed: start_mission to retry from origin.
 
+Combat (guns & missiles vs AI traffic) — test during cruise when trafficContacts is non-empty:
+- fire_gun: hitscan, ~2.5 km, aim with heading toward nearest traffic (set_heading to bearingRad first if hdg error > 15°).
+- fire_missile: needs missileLockReady=true (traffic ahead <15 km); homing missile, 4s reload.
+- Prefer chase view mentally: turn toward nearest traffic, then fire_gun repeatedly or fire_missile when locked.
+- combat.kills tracks shoot-downs; status line confirms hits.
+
 Control mode is manual or assisted (set in mission); you still output actions each turn.
 Use set_game_speed 4 if gameSpeed < 4.
 Do NOT spam set_throttle if within 0.05 of target.
+Do NOT use toggle_hyper during combat tests — stay at normal cruise speed for aiming.
 
 Output JSON:
 {
-  "action": "start_mission" | "start_flight" | "respawn" | "set_throttle" | "set_pitch" | "set_heading" | "set_gear" | "toggle_gear" | "toggle_hyper" | "toggle_pause" | "set_game_speed" | "set_control_mode" | "wait",
+  "action": "start_mission" | "start_flight" | "respawn" | "set_throttle" | "set_pitch" | "set_heading" | "set_gear" | "toggle_gear" | "toggle_hyper" | "toggle_pause" | "set_game_speed" | "set_control_mode" | "fire_gun" | "fire_missile" | "wait",
   "params": {
     "value": number,
     "speed": 1 | 2 | 4,
@@ -241,6 +248,49 @@ async function readState(page) {
         speedCapMach: Math.round((window.__earthAgent?.speedCapMach?.() ?? 0) * 100) / 100,
         currentMach: Math.round((window.__earthAgent?.currentMach?.() ?? 0) * 100) / 100,
         groundspeedKt: Math.round(f.speed * 1.94384),
+        trafficContacts: t.trafficContacts || [],
+        nearestTraffic: (() => {
+          const player = f;
+          let best = null;
+          let bestKm = Infinity;
+          for (const tr of s.traffic || []) {
+            const lat1 = (player.lat * Math.PI) / 180;
+            const lat2 = (tr.lat * Math.PI) / 180;
+            const dLon = ((tr.lon - player.lon) * Math.PI) / 180;
+            const dLat = lat2 - lat1;
+            const a =
+              Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+            const distM = 2 * 6371000 * Math.asin(Math.sqrt(a));
+            const km = distM / 1000;
+            if (km >= bestKm) continue;
+            bestKm = km;
+            const y = Math.sin(dLon) * Math.cos(lat2);
+            const x =
+              Math.cos(lat1) * Math.sin(lat2) -
+              Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+            const bearingRad = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2);
+            let hdgErr = bearingRad - player.heading;
+            while (hdgErr > Math.PI) hdgErr -= Math.PI * 2;
+            while (hdgErr < -Math.PI) hdgErr += Math.PI * 2;
+            best = {
+              id: tr.id,
+              label: tr.label,
+              km: Math.round(km * 10) / 10,
+              bearingRad: Math.round(bearingRad * 1000) / 1000,
+              headingErrorRad: Math.round(hdgErr * 1000) / 1000,
+            };
+          }
+          return best;
+        })(),
+        combat: {
+          kills: s.combat?.kills ?? 0,
+          missileLockReady: Boolean(s.combat?.lockId),
+          missileLockId: s.combat?.lockId || null,
+          gunCooldown: Math.round((s.combat?.gunCooldown ?? 0) * 100) / 100,
+          missileCooldown: Math.round((s.combat?.missileCooldown ?? 0) * 100) / 100,
+          activeMissiles: s.combat?.projectiles?.length ?? 0,
+        },
         mission: s.mission
           ? {
               active: s.mission.active,
@@ -313,6 +363,38 @@ function isAssistedTakeoffActive(gs) {
   return Boolean(tp && tp !== "idle" && tp !== "complete");
 }
 
+function decideCombatAction(gs) {
+  if (!EARTH || gs.mission?.phase !== "cruise" || !gs.afford?.canControl) return null;
+  const target = gs.nearestTraffic;
+  if (!target || target.km > 10) return null;
+
+  if (gs.combat?.missileLockReady && (gs.combat?.missileCooldown ?? 0) <= 0.05) {
+    return {
+      action: "fire_missile",
+      params: {},
+      reasoning: `[combat-auto] missile lock on ${target.label} @ ${target.km} km`,
+    };
+  }
+
+  if (Math.abs(target.headingErrorRad) > 0.12) {
+    return {
+      action: "set_heading",
+      params: { value: target.bearingRad },
+      reasoning: `[combat-auto] aim at ${target.label} (${target.km} km)`,
+    };
+  }
+
+  if (target.km <= 5) {
+    return {
+      action: "fire_gun",
+      params: {},
+      reasoning: `[combat-auto] guns on ${target.label} @ ${target.km} km`,
+    };
+  }
+
+  return null;
+}
+
 function guardAssistedTakeoffAction(action, gs) {
   if (!isAssistedTakeoffActive(gs)) return action;
   if (
@@ -337,6 +419,7 @@ function validActionsThisTurn(gs) {
     if (gs.afford.canRespawn) out.push("respawn");
     if (gs.afford.canToggleHyper) out.push("toggle_hyper");
     if (gs.afford.canControl) {
+      out.push("fire_gun", "fire_missile");
       out.push(
         "set_throttle",
         "set_pitch",
@@ -675,6 +758,12 @@ async function execute(page, action) {
       case "toggle_hyper":
         await page.evaluate(() => window.__earthAgent.toggleHyperSpeed());
         break;
+      case "fire_gun":
+        await page.evaluate(() => window.__earthAgent.fireGun());
+        break;
+      case "fire_missile":
+        await page.evaluate(() => window.__earthAgent.fireMissile());
+        break;
       case "set_game_speed":
         await page.evaluate(({ speed }) => window.__earthAgent.setGameSpeed(speed), params);
         break;
@@ -985,6 +1074,9 @@ async function tick(page, turn, logger, session) {
     game_speed: gs.gameSpeed,
     startup_active: gs.startupActive,
     status: gs.status,
+    combat_kills: gs.combat?.kills ?? 0,
+    missile_lock_ready: gs.combat?.missileLockReady ?? false,
+    traffic_contacts: gs.trafficContacts ?? [],
   });
 
   if (!EARTH && HEURISTIC && gs.mission.active && gs.afford.canControl) {
@@ -1012,9 +1104,8 @@ async function tick(page, turn, logger, session) {
   if (
     EARTH &&
     gs.afford.canControl &&
-    !isAssistedTakeoffActive(gs) &&
     gs.flight.gearDown &&
-    gs.flight.agl > 80 &&
+    gs.flight.agl > 35 &&
     !gs.flight.onGround
   ) {
     const auto = { action: "set_gear", params: { down: false }, reasoning: "[auto] gear up after liftoff" };
@@ -1049,9 +1140,20 @@ async function tick(page, turn, logger, session) {
     const navHint = gs.navigation
       ? `\nNavigation: fly toward ${gs.navigation.destId} — ${gs.navigation.distKm} km remaining, bearing ${gs.navigation.bearingDeg}°, heading error ${gs.navigation.hdgErrorDeg}°, arrived=${gs.navigation.arrived}.`
       : "";
+    const combatHint =
+      gs.combat && (gs.trafficContacts?.length || gs.combat.kills > 0)
+        ? `\nCombat: kills=${gs.combat.kills}, missileLockReady=${gs.combat.missileLockReady}, nearest=${JSON.stringify(gs.nearestTraffic || null)}. Prefer fire_missile when locked, else set_heading toward nearest traffic then fire_gun when <5 km.`
+        : "";
+    const combatAction = decideCombatAction(gs);
+    if (combatAction) {
+      action = guardAssistedTakeoffAction(
+        skipDuplicateAction(clampAction(normalizeAction(combatAction), gs), gs, session),
+        gs
+      );
+    } else {
     const raw = await askLLM(
       getSystemPrompt(),
-      `Game state:\n${JSON.stringify(gs, null, 2)}${navHint}\n\nValid actions this turn:\n${allowed.join(", ")}\n\nReturn one JSON action.`
+      `Game state:\n${JSON.stringify(gs, null, 2)}${navHint}${combatHint}\n\nValid actions this turn:\n${allowed.join(", ")}\n\nReturn one JSON action.`
     );
     const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "").trim();
 
@@ -1065,6 +1167,7 @@ async function tick(page, turn, logger, session) {
       skipDuplicateAction(clampAction(normalizeAction(action), gs), gs, session),
       gs
     );
+    }
   }
 
   if (EARTH && gs.flight.crashed && !session._wasCrashed) {
@@ -1113,8 +1216,9 @@ async function tick(page, turn, logger, session) {
   if (EARTH) {
     const tk = gs.takeoffPhase && gs.takeoffPhase !== "idle" ? ` tk:${gs.takeoffPhase}` : "";
     const hyper = gs.hyperSpeed ? " HYPER" : "";
+    const kills = gs.combat?.kills ? ` kills:${gs.combat.kills}` : "";
     console.log(
-      `[T${String(turn).padStart(3)}] ${gs.airportId}${gs.navigation ? `→${gs.navigation.destId}` : ""} | ${gs.mission?.phase || "?"}${tk}${hyper} | ${gs.groundspeedKt}kt agl ${String(gs.flight.agl).padStart(4)} | ${action.action}`
+      `[T${String(turn).padStart(3)}] ${gs.airportId}${gs.navigation ? `→${gs.navigation.destId}` : ""} | ${gs.mission?.phase || "?"}${tk}${hyper}${kills} | ${gs.groundspeedKt}kt agl ${String(gs.flight.agl).padStart(4)} | ${action.action}`
     );
   } else {
     console.log(
