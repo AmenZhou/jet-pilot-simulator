@@ -84,7 +84,7 @@ function pickType() {
   return "regional";
 }
 
-function horizontalDistanceM(a, b) {
+export function horizontalDistanceM(a, b) {
   const lat1 = (a.lat * Math.PI) / 180;
   const lat2 = (b.lat * Math.PI) / 180;
   const dLon = ((b.lon - a.lon) * Math.PI) / 180;

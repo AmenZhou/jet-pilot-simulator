@@ -3,6 +3,7 @@ import { cancelMission, setControlMode } from "./mission.js";
 import { adjustCameraZoom } from "./cesium-view.js";
 import { toggleAltitudeHold } from "./cruise-hold.js";
 import { toggleHyperSpeed } from "./speed-mode.js";
+import { fireMissile } from "./weapons.js";
 
 export function bindInput(state, onChange) {
   function down(event) {
@@ -58,6 +59,13 @@ export function bindInput(state, onChange) {
         toggleHyperSpeed(state);
         onChange();
         break;
+      case "KeyF":
+        state.input.fireGun = true;
+        break;
+      case "KeyR":
+        fireMissile(state);
+        onChange();
+        break;
       default:
         return;
     }
@@ -83,6 +91,9 @@ export function bindInput(state, onChange) {
         break;
       case "ArrowRight":
         state.input.yawRight = false;
+        break;
+      case "KeyF":
+        state.input.fireGun = false;
         break;
       default:
         return;

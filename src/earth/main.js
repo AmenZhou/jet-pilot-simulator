@@ -30,6 +30,7 @@ import { maintainTraffic, updateTraffic, clearTraffic } from "./traffic.js";
 import { applyAltitudeHold, toggleAltitudeHold } from "./cruise-hold.js";
 import { updateTakeoff, isTakeoffActive } from "./takeoff.js";
 import { toggleHyperSpeed, speedModeLabel, canEnableHyperSpeed, hyperBlockReason, getSpeedCapMps } from "./speed-mode.js";
+import { updateWeapons, fireGun, fireMissile } from "./weapons.js";
 import { drawHud } from "./hud.js";
 import { drawGlobePanel } from "./nav-map.js";
 import { drawRadarPanel } from "./radar-map.js";
@@ -112,6 +113,8 @@ window.__earthAgent = {
   currentMach: () => state.flight.speed / SPEED_OF_SOUND_MS,
   speedCapMps: () => getSpeedCapMps(state),
   speedCapMach: () => getSpeedCapMps(state) / SPEED_OF_SOUND_MS,
+  fireGun: () => fireGun(state),
+  fireMissile: () => fireMissile(state),
   setAgentDrive: (on) => {
     state.agentDrive = Boolean(on);
   },
@@ -421,6 +424,7 @@ function stepSimulation(dt) {
 
   maintainTraffic(state);
   updateTraffic(state, dt * state.gameSpeed, Cesium);
+  updateWeapons(state, dt, Cesium);
 
   renderPresentation();
 }

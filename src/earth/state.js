@@ -2,6 +2,7 @@ import { AIRPORTS, DEFAULT_AIRPORT, PHYSICS } from "./constants.js";
 import { createMissionState } from "./mission.js";
 import { MISSION_PHASES } from "./mission.js";
 import { initTakeoff, clearTakeoff } from "./takeoff.js";
+import { createCombatState } from "./weapons.js";
 
 function airportSpawn(id) {
   const ap = AIRPORTS[id] || AIRPORTS[DEFAULT_AIRPORT];
@@ -58,6 +59,7 @@ export function createState() {
       pitchDown: false,
       yawLeft: false,
       yawRight: false,
+      fireGun: false,
     },
     telemetry: {
       agl: 0,
@@ -74,6 +76,7 @@ export function createState() {
     altitudeHold: { active: false, targetAlt: null, userDisabled: false },
     /** Hyper Mach 300 — off during takeoff; toggle with M in cruise */
     hyperSpeed: false,
+    combat: createCombatState(),
     /** When true, rAF only renders — Playwright agent steps via __earthStep */
     agentDrive: false,
   };
@@ -88,6 +91,7 @@ export function spawnAtAirport(state, airportId) {
   state.traffic = [];
   state.telemetry.trafficNearby = 0;
   state.telemetry.nearestTrafficKm = null;
+  state.combat = createCombatState();
   if (state.mission?.active) {
     state.mission.phase = "preflight";
     state.mission.failReason = null;

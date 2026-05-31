@@ -13,6 +13,11 @@ export function drawHud(ctx, width, height, state) {
   ctx.lineWidth = 2;
   const cx = width / 2;
   const cy = height / 2;
+  const hitFlash = state.combat?.lastHitFlash && performance.now() - state.combat.lastHitFlash < 280;
+  if (hitFlash) {
+    ctx.strokeStyle = "rgba(255, 120, 90, 0.95)";
+    ctx.lineWidth = 3;
+  }
   ctx.beginPath();
   ctx.moveTo(cx - 26, cy);
   ctx.lineTo(cx - 8, cy);
@@ -41,6 +46,11 @@ export function drawHud(ctx, width, height, state) {
   drawBox(ctx, 16, 140, state.hyperSpeed ? "MACH" : "MACH*", machLabel, atCap);
   const rightInset = 176;
   drawBox(ctx, width - rightInset - 150, 16, "ALT M", String(Math.round(f.alt)));
+  const kills = state.combat?.kills ?? 0;
+  drawBox(ctx, width - rightInset - 150, 78, "KILLS", String(kills), kills > 0);
+  if (state.combat?.lockId && state.flying) {
+    drawBox(ctx, width - rightInset - 150, 140, "LOCK", "MSL RDY", true);
+  }
   drawBox(ctx, 16, height - 72, "AGL M", String(Math.round(t.agl)), t.agl < 30);
   const groundLabel = t.terrain?.nearestAirport || state.airportId || "MSL";
   drawBox(ctx, width / 2 - 75, height - 72, "NEAR", groundLabel, false);
