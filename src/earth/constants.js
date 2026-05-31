@@ -85,6 +85,14 @@ export const AIRPORTS = {
     alt: 6,
     heading: 2.71,
   },
+  PVG: {
+    id: "PVG",
+    name: "Shanghai Pudong (ZSPD)",
+    lat: 31.1434,
+    lon: 121.8052,
+    alt: 4,
+    heading: 3.02,
+  },
 };
 
 export const DEFAULT_AIRPORT = "SFO";

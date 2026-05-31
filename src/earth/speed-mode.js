@@ -1,6 +1,9 @@
 import { SPEED_OF_SOUND_MS, MAX_MACH } from "./constants.js";
-import { isTakeoffActive } from "./takeoff.js";
+import { isTakeoffActive, TAKEOFF_PHASES } from "./takeoff.js";
 import { MISSION_PHASES } from "./mission.js";
+
+/** Minimum AGL before hyper (matches UI copy). */
+export const HYPER_MIN_AGL_M = 120;
 
 /** ~Mach 0.85 cruise — realistic jet */
 export const NORMAL_MAX_MPS = SPEED_OF_SOUND_MS * 0.85;
@@ -17,16 +20,31 @@ export function isApproachOrLanding(state) {
   return m.phase === MISSION_PHASES.APPROACH || m.phase === MISSION_PHASES.LANDED;
 }
 
-export function canEnableHyperSpeed(state) {
-  if (!state.flying || state.flight.crashed || state.flight.onGround) return false;
-  if (isTakeoffActive(state)) return false;
+/** Why hyper is blocked — null means hyper can be enabled. */
+export function hyperBlockReason(state) {
+  if (!state.flying) return "Press Fly / Enter to depart first.";
+  if (state.flight.crashed) return "Respawn at an airport first.";
+  if (state.flight.onGround) return "Still on the ground — rotate and climb first.";
   const agl = state.telemetry?.agl ?? 0;
-  if (agl < 120) return false;
-  const m = state.mission;
-  if (m?.active && (m.phase === MISSION_PHASES.TAKEOFF || m.phase === MISSION_PHASES.PREFLIGHT)) {
-    return false;
+  if (agl < HYPER_MIN_AGL_M) {
+    return `Climb higher — hyper unlocks above ~${HYPER_MIN_AGL_M} m AGL (now ${Math.round(agl)} m).`;
   }
-  return true;
+  const tk = state.takeoff?.phase;
+  if (tk === TAKEOFF_PHASES.ROLL || tk === TAKEOFF_PHASES.ROTATE) {
+    return "Finish takeoff roll and rotation first.";
+  }
+  const m = state.mission;
+  if (m?.active && m.phase === MISSION_PHASES.PREFLIGHT) {
+    return "Start the takeoff roll (Fly / Enter) first.";
+  }
+  if (isApproachOrLanding(state)) {
+    return "Hyper is disabled during approach and landing.";
+  }
+  return null;
+}
+
+export function canEnableHyperSpeed(state) {
+  return hyperBlockReason(state) === null;
 }
 
 export function getSpeedCapMps(state) {
@@ -82,8 +100,8 @@ export function toggleHyperSpeed(state) {
     return false;
   }
   if (!canEnableHyperSpeed(state)) {
-    state.status =
-      "Hyper speed only in cruise — finish takeoff, climb above ~120 m AGL, then press M.";
+    state.status = hyperBlockReason(state) ||
+      "Hyper speed only in cruise — climb above ~120 m AGL, then press M.";
     return false;
   }
   state.hyperSpeed = true;

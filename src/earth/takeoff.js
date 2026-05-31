@@ -165,9 +165,9 @@ export function applyAssistedTakeoff(state, dt) {
 
   if (tk.phase === TAKEOFF_PHASES.LIFTOFF || tk.phase === TAKEOFF_PHASES.INITIAL_CLIMB) {
     f.throttle = Math.min(1, Math.max(0.88, f.throttle));
-    if (f.speed < V2_MPS) {
-      f.pitch = Math.min(0.16, f.pitch + t * 0.06);
-    } else if (f.pitch > targetClimbPitchRad) {
+    if (f.pitch < targetClimbPitchRad) {
+      f.pitch = Math.min(targetClimbPitchRad, f.pitch + t * 0.08);
+    } else if (f.pitch > targetClimbPitchRad + 0.02) {
       f.pitch = Math.max(targetClimbPitchRad, f.pitch - t * 0.12);
     }
     if (agl > 18 && climbing && f.gearDown && !tk.gearUpDone) {

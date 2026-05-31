@@ -1,4 +1,4 @@
-import { AIRPORTS, DEFAULT_AIRPORT, MAX_MACH } from "./constants.js";
+import { AIRPORTS, DEFAULT_AIRPORT, MAX_MACH, SPEED_OF_SOUND_MS } from "./constants.js";
 import { createState, spawnAtAirport, beginFlight, prepareRunway } from "./state.js";
 import {
   startMission as beginMissionRoute,
@@ -29,7 +29,7 @@ import { updateFlightPhysics, moveAlongHeading } from "./physics.js";
 import { maintainTraffic, updateTraffic, clearTraffic } from "./traffic.js";
 import { applyAltitudeHold, toggleAltitudeHold } from "./cruise-hold.js";
 import { updateTakeoff, isTakeoffActive } from "./takeoff.js";
-import { toggleHyperSpeed, speedModeLabel, canEnableHyperSpeed } from "./speed-mode.js";
+import { toggleHyperSpeed, speedModeLabel, canEnableHyperSpeed, hyperBlockReason, getSpeedCapMps } from "./speed-mode.js";
 import { drawHud } from "./hud.js";
 import { drawGlobePanel } from "./nav-map.js";
 import { drawRadarPanel } from "./radar-map.js";
@@ -106,7 +106,12 @@ window.__earthAgent = {
   toggleAltitudeHold: () => toggleAltitudeHold(state),
   toggleHyperSpeed: () => toggleHyperSpeed(state),
   canEnableHyperSpeed: () => canEnableHyperSpeed(state),
+  hyperBlockReason: () => hyperBlockReason(state),
   speedModeLabel: () => speedModeLabel(state),
+  maxMachConstant: () => MAX_MACH,
+  currentMach: () => state.flight.speed / SPEED_OF_SOUND_MS,
+  speedCapMps: () => getSpeedCapMps(state),
+  speedCapMach: () => getSpeedCapMps(state) / SPEED_OF_SOUND_MS,
   setAgentDrive: (on) => {
     state.agentDrive = Boolean(on);
   },
@@ -203,7 +208,7 @@ function syncPanel() {
     els.hyperBtn.disabled = state.flying && !canEnableHyperSpeed(state) && !state.hyperSpeed;
     els.hyperBtn.title = state.hyperSpeed
       ? `Mach ${MAX_MACH} cap`
-      : "Enable above ~120 m AGL after takeoff";
+      : hyperBlockReason(state) || "Enable above ~120 m AGL after takeoff";
   }
   if (els.telMission && state.flying) {
     const m = state.mission;

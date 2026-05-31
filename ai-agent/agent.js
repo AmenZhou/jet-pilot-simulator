@@ -67,6 +67,7 @@ const AIRPORTS = {
   LHR: { id: "LHR", name: "London (EGLL)", lat: 51.47, lon: -0.4543 },
   NRT: { id: "NRT", name: "Tokyo (RJAA)", lat: 35.772, lon: 140.3929 },
   SYD: { id: "SYD", name: "Sydney (YSSY)", lat: -33.9399, lon: 151.1753 },
+  PVG: { id: "PVG", name: "Shanghai Pudong (ZSPD)", lat: 31.1434, lon: 121.8052 },
 };
 
 class Logger {
@@ -157,7 +158,8 @@ Primary goal: take off from origin, cruise, land at destination (gear down, slow
 
 Mission phases: preflight → takeoff → cruise → approach → landed (or failed).
 - Assisted mode: takeoff roll → rotate at VR → liftoff → V2 climb is automatic. Use **wait** during takeoff (do NOT set_throttle/set_pitch).
-- Speed is capped ~190 kt on takeoff; hyper (Mach 100) only after cruise climb (>120 m AGL) via toggle_hyper.
+- Speed is capped ~190 kt on takeoff; hyper (Mach 300) only after climb above ~120 m AGL via toggle_hyper when afford.canToggleHyper is true.
+- When afford.canToggleHyper is true, prefer toggle_hyper once, then set_throttle 1.0 to verify speed_cap_mach reaches 300 (not 100).
 - Manual takeoff: start_flight, then throttle 0.9+, pitch up at VR (~146 kt).
 - cruise: 250–450m AGL; use set_heading with navigation.bearingRad (radians, ~0–6.28), NOT degrees.
 - set_heading params.value must be radians. Do not pass 138 for a degree bearing.
@@ -235,6 +237,9 @@ async function readState(page) {
         takeoffVRKt: s.takeoff?.speeds?.VR_KT ?? null,
         hyperSpeed: Boolean(s.hyperSpeed),
         speedMode: window.__earthAgent?.speedModeLabel?.() || null,
+        maxMachConstant: window.__earthAgent?.maxMachConstant?.() ?? null,
+        speedCapMach: Math.round((window.__earthAgent?.speedCapMach?.() ?? 0) * 100) / 100,
+        currentMach: Math.round((window.__earthAgent?.currentMach?.() ?? 0) * 100) / 100,
         groundspeedKt: Math.round(f.speed * 1.94384),
         mission: s.mission
           ? {
@@ -254,6 +259,7 @@ async function readState(page) {
           canStartFlight: !s.flying && !f.crashed,
           canControl: s.flying && !s.paused && !f.crashed,
           canToggleHyper: Boolean(window.__earthAgent?.canEnableHyperSpeed?.()),
+          hyperBlockReason: window.__earthAgent?.hyperBlockReason?.() || null,
           canRespawn: f.crashed,
         },
       };
@@ -910,7 +916,7 @@ async function checkPageFaults(page, turn, logger, session) {
 
 async function beginEarthTakeoffIfNeeded(page, route = null) {
   await page.evaluate(
-    ({ from, to, mode }) => {
+    ({ from, to, mode, gameSpeed }) => {
       const s = window.__earthState;
       if (!s.mission?.active && from && to) {
         window.__earthAgent.setControlMode(mode);
@@ -923,13 +929,14 @@ async function beginEarthTakeoffIfNeeded(page, route = null) {
       }
       s.paused = false;
       if (s.takeoff?.phase && s.takeoff.phase !== "complete") {
-        window.__earthAgent.setGameSpeed(1);
+        window.__earthAgent.setGameSpeed(gameSpeed);
       }
     },
     {
       from: route?.from || null,
       to: route?.to || null,
       mode: route?.mode || "assisted",
+      gameSpeed: HEADLESS ? 4 : 1,
     }
   );
 }
@@ -965,6 +972,11 @@ async function tick(page, turn, logger, session) {
     mission: gs.mission,
     takeoff_phase: gs.takeoffPhase,
     hyper_speed: gs.hyperSpeed,
+    can_toggle_hyper: gs.afford?.canToggleHyper ?? null,
+    hyper_block_reason: gs.afford?.hyperBlockReason ?? null,
+    max_mach_constant: gs.maxMachConstant,
+    speed_cap_mach: gs.speedCapMach,
+    current_mach: gs.currentMach,
     groundspeed_kt: gs.groundspeedKt,
     speed_mode: gs.speedMode,
     flight: gs.flight,
